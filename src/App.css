@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #2563eb; /* Cor padrão que muda no seletor do Sidebar */
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-300;
+  }
+  
+  .dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+}
+
+@layer components {
+  /* Força a visibilidade de cards brancos no modo dark */
+  .dark .bg-white {
+    @apply bg-slate-900 border-slate-800 text-slate-100 !important;
+  }
+
+  /* Ajuste de Inputs e Selects para não ficarem "invisíveis" */
+  .dark input, .dark select, .dark textarea {
+    @apply bg-slate-800 border-slate-700 text-white focus:border-indigo-500 !important;
+  }
+
+  /* Garante que textos secundários fiquem legíveis */
+  .dark .text-slate-500, .dark .text-slate-400 {
+    @apply text-slate-400 !important;
+  }
+
+  /* Botão que herda a cor do tema escolhido no menu */
+  .btn-theme {
+    background-color: var(--primary-color);
+    @apply text-white hover:opacity-90 transition-all active:scale-95 disabled:opacity-50;
+  }
+  
+  /* Ajuste de tabelas para o modo dark */
+  .dark table {
+    @apply border-slate-800;
+  }
+  .dark thead {
+    @apply bg-slate-800/50 text-slate-300;
+  }
+  .dark tr {
+    @apply border-slate-800 hover:bg-slate-800/30;
+  }
+}
