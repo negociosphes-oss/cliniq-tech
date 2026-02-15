@@ -26,14 +26,16 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
      if (!email && showToast) {
          showToast('Atenção: E-mail do cliente não está preenchido na Visão Geral. Preencha no seu gerenciador de e-mail.', 'info');
      }
-     const linkPrivado = `${window.location.origin}/view/os/${osForm.id}`;
+     
+     // AQUI ESTÁ A MÁGICA: O link usa o id_publico
+     const linkPrivado = `${window.location.origin}/view/os/${osForm.id_publico}`;
+     
      const assunto = encodeURIComponent(`Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`);
      const corpo = encodeURIComponent(`Olá ${osForm.solicitante_nome || 'Cliente'},\n\nInformamos que a sua Ordem de Serviço #${osForm.id} referente ao equipamento TAG: ${osForm.equipamento?.tag || ''} foi concluída com sucesso.\n\nPara visualizar o relatório técnico digital completo e baixar o seu certificado, acesse o link seguro abaixo:\n\n🔗 Acessar Relatório: ${linkPrivado}\n\nAtenciosamente,\nEquipe Técnica Atlasum`);
      
      // Abre o Outlook/Gmail do usuário
      window.open(`mailto:${email}?subject=${assunto}&body=${corpo}`);
   };
-
   return (
     <div className="animate-fadeIn max-w-5xl mx-auto space-y-8">
       
