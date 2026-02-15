@@ -11,8 +11,7 @@ export function OSPublicView() {
   const [loading, setLoading] = useState(true);
 
   // 2. CORRIGIDO: Pega o ID da URL do jeito certo
-  const { id } = useParams(); 
-  const osUuid = id;
+ const osUuid = window.location.pathname.split('/').filter(Boolean).pop();
 
   useEffect(() => {
     fetchPublicOS();
@@ -20,10 +19,12 @@ export function OSPublicView() {
 
   const fetchPublicOS = async () => {
     if (!osUuid) {
-      setLoading(false); // 3. CORRIGIDO: Se não tiver ID, para de carregar
+      setLoading(false);
       return;
     }
     
+    console.log("Procurando o ID:", osUuid); // Vai mostrar o ID na sua tela preta
+
     // Busca a OS pelo UUID público
     const { data, error } = await supabase
       .from('ordens_servico')
@@ -34,8 +35,12 @@ export function OSPublicView() {
       .eq('id_publico', osUuid)
       .single();
 
+    if (error) {
+      console.error("ERRO DO SUPABASE:", error); // Vai "gritar" em vermelho o que deu errado!
+    }
+
     if (data) setOs(data);
-    setLoading(false); // 4. Garante que o loading vai sumir
+    setLoading(false);
   };
 
   if (loading) return (
