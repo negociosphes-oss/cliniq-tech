@@ -30,7 +30,7 @@ export function OSPublicView() {
       .from('ordens_servico')
       .select(`
         *,
-        equipamentos (*, tecnologias!tecnologia_id (*), clientes (*))
+        equipamentos (*, tecnologias!fk_tecnologia_oficial (*), clientes (*))
       `)
       .eq('id_publico', osUuid)
       .single();
