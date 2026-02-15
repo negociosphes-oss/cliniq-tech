@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom'; // 1. ADICIONADO: Importador de URL do React
 import { supabase } from '../../supabaseClient';
 import { 
   FileText, Download, CheckCircle2, MapPin, 
@@ -9,36 +10,39 @@ export function OSPublicView() {
   const [os, setOs] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Pega o ID da URL (Ex: ?id=uuid-aqui)
-  const urlParams = new URLSearchParams(window.location.search);
-  const osUuid = urlParams.get('id');
+  // 2. CORRIGIDO: Pega o ID da URL do jeito certo
+  const { id } = useParams(); 
+  const osUuid = id;
 
   useEffect(() => {
     fetchPublicOS();
   }, [osUuid]);
 
   const fetchPublicOS = async () => {
-    if (!osUuid) return;
+    if (!osUuid) {
+      setLoading(false); // 3. CORRIGIDO: Se não tiver ID, para de carregar
+      return;
+    }
     
-    // Busca a OS pelo UUID público (segurança)
+    // Busca a OS pelo UUID público
     const { data, error } = await supabase
       .from('ordens_servico')
       .select(`
         *,
         equipamentos (*, tecnologias (*), clientes (*))
       `)
-      .eq('id_publico', osUuid) // Coluna UUID que vamos criar
+      .eq('id_publico', osUuid)
       .single();
 
     if (data) setOs(data);
-    setLoading(false);
+    setLoading(false); // 4. Garante que o loading vai sumir
   };
 
   if (loading) return (
     <div className="h-screen bg-[#F2F2F7] dark:bg-black flex items-center justify-center">
       <div className="animate-pulse flex flex-col items-center gap-4">
-        <div className="w-16 h-16 bg-blue-600 rounded-2xl shadow-xl"></div>
-        <p className="text-theme-muted font-bold tracking-widest text-[10px] uppercase">Atlasum Secure</p>
+        <div className="w-16 h-16 bg-blue-600 rounded-2xl shadow-xl flex items-center justify-center text-white font-black text-2xl">A</div>
+        <p className="text-blue-600 font-black tracking-widest text-[10px] uppercase">Atlasum Secure</p>
       </div>
     </div>
   );
@@ -89,8 +93,8 @@ export function OSPublicView() {
               <div className="p-3 bg-blue-500/10 text-blue-600 rounded-2xl"><Wrench size={24}/></div>
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Equipamento</p>
-                <h2 className="text-xl font-black">{os.equipamentos?.tecnologias?.nome}</h2>
-                <p className="text-sm font-bold text-slate-500">TAG: {os.equipamentos?.tag}</p>
+                <h2 className="text-xl font-black">{os.equipamentos?.tecnologias?.nome || 'Equipamento não especificado'}</h2>
+                <p className="text-sm font-bold text-slate-500">TAG: {os.equipamentos?.tag || 'N/A'}</p>
               </div>
             </div>
 
@@ -115,7 +119,7 @@ export function OSPublicView() {
             <div className="pt-6 border-t border-black/5 dark:border-white/5">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Resumo da Execução</p>
                 <div className="bg-[#F2F2F7] dark:bg-black/20 p-5 rounded-2xl text-sm font-medium leading-relaxed italic text-slate-700 dark:text-slate-300">
-                  "{os.solucao_aplicada || 'Manutenção preventiva realizada conforme protocolo técnico.'}"
+                  "{os.solucao_aplicada || 'Manutenção realizada conforme protocolo técnico padrão.'}"
                 </div>
             </div>
           </div>
