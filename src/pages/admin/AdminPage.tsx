@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Settings, Users, ShieldCheck, Building, Bell, HardDrive, Key, ListChecks } from 'lucide-react';
+import { Settings, Users, ShieldCheck, Building, Bell, HardDrive, Key, ListChecks, Lock, CreditCard } from 'lucide-react';
 import { ConfigGeral } from './components/ConfigGeral';
 import { UsuariosList } from './components/UsuariosList';
 import { AuditLogsList } from './components/AuditLogsList'; 
-import { TiposOSList } from './components/TiposOSList'; // <-- IMPORT DO NOVO COMPONENTE
+import { TiposOSList } from './components/TiposOSList'; 
+import { PermissoesCargos } from './components/PermissoesCargos';
+import { MeuPlano } from './components/MeuPlano';
 
 export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'empresa' | 'tiposos' | 'usuarios' | 'auditoria' | 'notificacoes'>('empresa');
+  const [activeTab, setActiveTab] = useState<'empresa' | 'tiposos' | 'usuarios' | 'permissoes' | 'auditoria' | 'notificacoes' | 'plano'>('empresa');
 
   return (
     <div className="min-h-screen p-8 animate-fadeIn max-w-[1600px] mx-auto pb-24">
@@ -19,12 +21,12 @@ export function AdminPage() {
             </span>
             Painel de Controle
         </h2>
-        <p className="text-theme-muted font-medium mt-2 ml-1">Gerencie as configurações globais, acessos e segurança do ATLAS.</p>
+        <p className="text-theme-muted font-medium mt-2 ml-1">Gerencie as configurações globais, acessos e segurança da plataforma.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8 items-start">
         
-        {/* MENU LATERAL DE CONFIGURAÇÕES (Apple Sidebar Style) */}
+        {/* MENU LATERAL DE CONFIGURAÇÕES */}
         <div className="w-full lg:w-72 shrink-0 space-y-8 sticky top-24">
             
             {/* Categoria: Geral */}
@@ -38,7 +40,6 @@ export function AdminPage() {
                         title="Identidade" 
                         subtitle="Logotipo & Dados"
                     />
-                    {/* BOTÃO DO NOVO MÓDULO */}
                     <MenuButton 
                         active={activeTab === 'tiposos'} 
                         onClick={() => setActiveTab('tiposos')} 
@@ -56,6 +57,20 @@ export function AdminPage() {
                 </div>
             </div>
 
+            {/* 🚀 NOVA Categoria: Assinatura & Uso */}
+            <div>
+                <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">Licenciamento</h4>
+                <div className="space-y-1">
+                    <MenuButton 
+                        active={activeTab === 'plano'} 
+                        onClick={() => setActiveTab('plano')} 
+                        icon={<CreditCard size={18} strokeWidth={1.5}/>} 
+                        title="Meu Plano SaaS" 
+                        subtitle="Faturas & Limites de Uso"
+                    />
+                </div>
+            </div>
+
             {/* Categoria: Acesso & Segurança */}
             <div>
                 <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">Security</h4>
@@ -66,6 +81,13 @@ export function AdminPage() {
                         icon={<Users size={18} strokeWidth={1.5}/>} 
                         title="Time & Acessos" 
                         subtitle="Gestão de Usuários"
+                    />
+                    <MenuButton 
+                        active={activeTab === 'permissoes'} 
+                        onClick={() => setActiveTab('permissoes')} 
+                        icon={<Lock size={18} strokeWidth={1.5}/>} 
+                        title="Matriz de Acessos" 
+                        subtitle="Permissões por Cargo"
                     />
                     <MenuButton 
                         active={activeTab === 'auditoria'} 
@@ -100,10 +122,13 @@ export function AdminPage() {
         {/* ÁREA DE CONTEÚDO DINÂMICO */}
         <div className="flex-1 w-full min-w-0">
             {activeTab === 'empresa' && <ConfigGeral />}
-            {/* RENDERIZAÇÃO DO NOVO MÓDULO */}
             {activeTab === 'tiposos' && <TiposOSList />}
             
+            {/* 🚀 O NOVO MÓDULO RENDERIZADO */}
+            {activeTab === 'plano' && <MeuPlano />}
+
             {activeTab === 'usuarios' && <UsuariosList />}
+            {activeTab === 'permissoes' && <PermissoesCargos />}
             {activeTab === 'auditoria' && <AuditLogsList />}
             
             {activeTab === 'notificacoes' && (

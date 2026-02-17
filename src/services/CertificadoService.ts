@@ -9,6 +9,12 @@ const formatDate = (date: any) => {
     return isValid(d) ? format(d, 'dd/MM/yyyy') : '-';
 };
 
+const resolveStorageUrl = (path: any, folder: string = 'assinaturas') => {
+    if (!path || typeof path !== 'string') return null;
+    if (path.startsWith('http')) return path;
+    return `https://dnimxqxgtvltgvrrabur.supabase.co/storage/v1/object/public/os-imagens/${folder}/${path}`;
+};
+
 export const CertificadoService = {
   async gerarPayload(osId: number) {
     try {
@@ -36,12 +42,11 @@ export const CertificadoService = {
           clienteData = cli || {};
       }
 
-      // 🔍 AQUI ACONTECE A MÁGICA: O select busca os objetos do executor e responsável completos.
       const { data: exec } = await supabase.from('os_metrologia_execucoes')
         .select('*, responsavel:id_tecnico_responsavel(*), executor:id_tecnico_executor(*)')
         .eq('ordem_servico_id', osId).order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-      if (!exec) throw new Error('Calibração não finalizada. Salve os dados técnicos antes de gerar.');
+      if (!exec) throw new Error('Calibração não finalizada. Salve os dados técnicos antes de gerar o laudo.');
 
       const { data: config } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
 
@@ -59,7 +64,10 @@ export const CertificadoService = {
       if (itens && itens.length > 0) {
           const temAlgumaLeitura = itens.some((i: any) => i.valor_lido !== null && i.valor_lido !== '');
           const equipamentoComFalha = itens.some((i: any) => i.conforme === false || String(i.conforme).toLowerCase() === 'false');
-          if (equipamentoComFalha) {
+          
+          if (padroesReais.length === 0) {
+              statusMatematico = 'REPROVADO';
+          } else if (equipamentoComFalha) {
               statusMatematico = 'REPROVADO';
           } else if (temAlgumaLeitura) {
               statusMatematico = 'APROVADO';
@@ -67,7 +75,6 @@ export const CertificadoService = {
       }
 
       const statusFinal = statusMatematico;
-
       const dataEmissao = new Date(exec.data_calibracao || new Date());
       const validadeMeses = equipData.periodicidade || 12; 
       const dataVencimento = addMonths(dataEmissao, validadeMeses);
@@ -75,14 +82,10 @@ export const CertificadoService = {
       const validadeTexto = statusFinal === 'REPROVADO' ? 'NÃO APLICÁVEL (REPROVADO)' : format(dataVencimento, 'dd/MM/yyyy');
       const numeroCertificado = `CERT-${dataEmissao.getFullYear()}-${String(os.id).padStart(6, '0')}`;
       
-      // ============================================================================
-      // 🚀 GERAÇÃO DE QR CODE (URL DE AUTENTICIDADE)
-      // ============================================================================
       const baseUrl = window.location.origin; 
       const chaveAutenticidade = `${numeroCertificado}-${exec.id}`;
       const urlVerificacao = `${baseUrl}/autenticidade?chave=${chaveAutenticidade}`;
       const qrCodeUrl = await QRCode.toDataURL(urlVerificacao, { width: 100, margin: 1 });
-      // ============================================================================
 
       return {
         id_doc: chaveAutenticidade, 
@@ -93,21 +96,21 @@ export const CertificadoService = {
         qr_code: qrCodeUrl,
         
         cabecalho: {
-            empresa: safeText(config?.nome_empresa, 'LABORATÓRIO CLÍNICO'),
+            empresa: safeText(config?.nome_empresa || config?.nome_fantasia, 'ATLAS SYSTEM MEDICAL'),
             cnpj: safeText(config?.cnpj),
             endereco: safeText(config?.endereco_completo),
             contato: safeText(config?.telefone || config?.email),
-            logo: config?.logo_url
+            logo: config?.logo_url || config?.logotipo_url // Pega URL direta
         },
 
         cliente: {
-            nome: safeText(clienteData.nome_fantasia || clienteData.razao_social, 'Cliente'),
+            nome: safeText(clienteData.nome_fantasia || clienteData.razao_social, 'Cliente não informado'),
             doc: safeText(clienteData.cnpj_cpf || clienteData.doc_id),
             endereco: `${safeText(clienteData.endereco)}, ${safeText(clienteData.cidade)}`
         },
 
         equipamento: {
-            nome: safeText(equipData.nome || tecData.nome || os.equipamento_nome || os.titulo, 'Equipamento'),
+            nome: safeText(equipData.nome || tecData.nome || os.equipamento_nome || os.titulo, 'Ativo Hospitalar'),
             modelo: safeText(equipData.modelo || tecData.modelo || os.equipamento_modelo, '-'),
             fabricante: safeText(equipData.fabricante || tecData.fabricante || os.equipamento_fabricante, '-'),
             serie: safeText(equipData.n_serie || equipData.serie || os.equipamento_serie, '-'),
@@ -120,12 +123,18 @@ export const CertificadoService = {
             umid: safeText(exec.umidade)
         },
 
-        padroes: padroesReais.map((item: any) => ({
+        // 🚀 AQUI ESTÁ A MÁGICA DOS PADRÕES (Layout do seu Exemplo)
+        padroes: padroesReais.map((item: any, index: number) => ({
+            index: index + 1,
             nome: safeText(item.nome),
-            serie: safeText(item.n_serie),
-            certificado: safeText(item.n_certificado),
+            tag: safeText(item.codigo || item.tag, '-'),
+            serie: safeText(item.n_serie, '-'),
+            emissor: safeText(item.orgao_calibrador || item.fabricante, 'RBC'),
+            emissao: formatDate(item.data_calibracao),
             validade: formatDate(item.data_vencimento),
-            orgao: safeText(item.orgao_calibrador || item.fabricante, 'RBC')
+            certificado: safeText(item.n_certificado, '-'),
+            // Fallback robusto caso não tenha a coluna rastreabilidade específica
+            rastreabilidade: safeText(item.rastreabilidade || item.dados_rastreabilidade || item.observacoes || `PADRÕES UTILIZADOS COM RASTREABILIDADE RBC/INMETRO. CERTIFICADO ORIGEM: ${safeText(item.n_certificado)} - VALIDADE: ${formatDate(item.data_vencimento)}`, '-')
         })),
 
         resultados: (itens || []).map((i: any) => ({
@@ -138,16 +147,14 @@ export const CertificadoService = {
             status: (i.conforme === true || String(i.conforme).toLowerCase() === 'true') ? 'OK' : 'NOK'
         })),
 
-        // 🚀 O CÓDIGO FINAL DE AUDITORIA DE ASSINATURAS
-        // Aqui o serviço puxa a foto do perfil (assinatura) e envia para o PDF desenhar.
         assinaturas: {
             executor: safeText(exec.executor?.nome, 'Técnico Executor'),
             executor_reg: safeText(exec.executor?.registro_profissional),
-            executor_assinatura: exec.executor?.assinatura_url || exec.executor?.foto_url || null, // <- Imagem do executor
+            executor_assinatura: resolveStorageUrl(exec.executor?.assinatura_url || exec.executor?.foto_url, 'assinaturas'), 
 
             responsavel: safeText(exec.responsavel?.nome, 'Engenheiro Responsável'),
             responsavel_reg: safeText(exec.responsavel?.registro_profissional),
-            responsavel_assinatura: exec.responsavel?.assinatura_url || exec.responsavel?.foto_url || null // <- Imagem do responsável
+            responsavel_assinatura: resolveStorageUrl(exec.responsavel?.assinatura_url || exec.responsavel?.foto_url, 'assinaturas') 
         },
 
         notas_tecnicas: {
@@ -159,7 +166,7 @@ export const CertificadoService = {
       };
 
     } catch (e: any) { 
-        console.error("Erro na geração:", e);
+        console.error("Erro no motor CertificadoService:", e);
         throw e; 
     }
   }

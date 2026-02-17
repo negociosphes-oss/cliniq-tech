@@ -22,6 +22,8 @@ export function CronogramaPage() {
   const [planosRaw, setPlanosRaw] = useState<CronogramaPlano[]>([]);
   const [itensRaw, setItensRaw] = useState<Cronograma[]>([]); 
   
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+
   // MODAIS
   const [showGerador, setShowGerador] = useState(false);
   const [showRelatorio, setShowRelatorio] = useState(false);
@@ -30,29 +32,58 @@ export function CronogramaPage() {
   
   const [filtroStatus, setFiltroStatus] = useState('');
 
-  // --- BUSCA DE DADOS BLINDADA (MANUAL HYDRATION) ---
-  const fetchData = async () => {
+  // 🚀 1. MOTOR FAREJADOR
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
+
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchData(tId);
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. BUSCA DE DADOS BLINDADA (FECHADURA TRIPLA)
+  const fetchData = async (tId: number) => {
     setLoading(true);
     try {
-      // 1. Busca Planos
+      // 1. Busca Planos apenas deste inquilino
       const { data: planosData } = await supabase
         .from('cronograma_planos')
         .select(`*, clientes(nome_fantasia)`)
+        .eq('tenant_id', tId) // Trava
         .order('created_at', { ascending: false });
 
-      // 2. Busca Cronogramas (Apenas dados puros)
+      // 2. Busca Cronogramas (Apenas dados puros deste inquilino)
       const { data: cronoData } = await supabase
         .from('cronogramas')
         .select('*')
+        .eq('tenant_id', tId) // Trava
         .order('data_programada', { ascending: true });
 
-      // 3. Busca Equipamentos (Separadamente para garantir)
+      // 3. Busca Equipamentos (Apenas deste inquilino)
       const { data: equipData } = await supabase
         .from('equipamentos')
-        .select('*, tecnologias(nome, criticidade), clientes(nome_fantasia)');
+        .select('*, tecnologias(nome, criticidade), clientes(nome_fantasia)')
+        .eq('tenant_id', tId); // Trava
 
-      // 4. HIDRATAÇÃO MANUAL (O Pulo do Gato)
-      // Cruzamos os dados aqui no front para não depender do Join do banco
+      // 4. HIDRATAÇÃO MANUAL
       const itensCompletos = (cronoData || []).map((item: any) => {
           const equip = (equipData || []).find((e: any) => e.id === item.equipamento_id);
           return {
@@ -70,10 +101,6 @@ export function CronogramaPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const planosComStats: PlanWithStats[] = useMemo(() => {
     return planosRaw.map(plano => {
@@ -144,6 +171,7 @@ export function CronogramaPage() {
     }
   };
 
+  // 🚀 3. TRAVA DE EXCLUSÃO DUPLA
   const handleDeletePlan = async () => {
      if (!activePlan) return;
      const confirmText = prompt(`DIGITE "DELETAR" PARA EXCLUIR O PLANO "${activePlan.nome}":`);
@@ -151,10 +179,10 @@ export function CronogramaPage() {
 
      setLoading(true);
      try {
-        await supabase.from('cronogramas').delete().eq('plano_id', activePlan.id);
-        await supabase.from('cronograma_planos').delete().eq('id', activePlan.id);
+        await supabase.from('cronogramas').delete().eq('plano_id', activePlan.id).eq('tenant_id', tenantId);
+        await supabase.from('cronograma_planos').delete().eq('id', activePlan.id).eq('tenant_id', tenantId);
         handleBackToPlans();
-        fetchData();
+        fetchData(tenantId);
      } catch (e: any) {
         alert('Erro ao excluir: ' + e.message);
      } finally {
@@ -238,13 +266,14 @@ export function CronogramaPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden min-h-[500px]">
-               {viewMode === 'list' ? <CronogramaList data={activeItems} onRefresh={fetchData} /> : <div className="p-6"><CronogramaCalendar data={activeItems} onRefresh={fetchData} /></div>}
+               {viewMode === 'list' ? <CronogramaList data={activeItems} onRefresh={() => fetchData(tenantId)} /> : <div className="p-6"><CronogramaCalendar data={activeItems} onRefresh={() => fetchData(tenantId)} /></div>}
             </div>
          </div>
       )}
 
-      {showGerador && <GeradorModal onClose={() => setShowGerador(false)} onGenerated={fetchData} initialPlanName={preSelectedPlanName} initialPlanId={preSelectedPlanId} />}
-      {showRelatorio && <RelatorioConfigModal onClose={() => setShowRelatorio(false)} />}
+      {/* 🚀 4. PROPAGAÇÃO DE INQUILINO PARA OS MODAIS */}
+      {showGerador && <GeradorModal onClose={() => setShowGerador(false)} onGenerated={() => fetchData(tenantId)} initialPlanName={preSelectedPlanName} initialPlanId={preSelectedPlanId} tenantId={tenantId} />}
+      {showRelatorio && <RelatorioConfigModal onClose={() => setShowRelatorio(false)} tenantId={tenantId} />}
     </div>
   )
 }

@@ -10,25 +10,63 @@ export function ClientesPage() {
   const [busca, setBusca] = useState('');
   const [isHubOpen, setIsHubOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<any>(null);
+  
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
 
-  const fetchClientes = async () => {
-    const { data } = await supabase.from('clientes').select('*').order('nome_fantasia');
+  // 🚀 1. MOTOR FAREJADOR
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
+
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchClientes(tId);
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. FECHADURA DE BUSCA: Só vê os próprios clientes
+  const fetchClientes = async (tId: number) => {
+    const { data } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('tenant_id', tId) // Trava de Segurança
+      .order('nome_fantasia');
     setClientes(data || []);
   };
-
-  useEffect(() => { fetchClientes(); }, []);
 
   const handleOpenHub = (cliente: any = null) => {
     setSelectedCliente(cliente);
     setIsHubOpen(true);
   };
 
+  // 🚀 3. FECHADURA DE EXCLUSÃO
   const handleDelete = async (id: number) => {
     if(!confirm('ATENÇÃO: Excluir o cliente apagará também Contratos e Dados Bancários. Continuar?')) return;
     try {
-        const { error } = await supabase.from('clientes').delete().eq('id', id);
+        const { error } = await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', id)
+          .eq('tenant_id', tenantId); // Trava Hacker-Proof
+          
         if (error) throw error;
-        fetchClientes();
+        fetchClientes(tenantId);
     } catch (error: any) {
         alert('Erro ao excluir: ' + error.message);
     }
@@ -142,7 +180,8 @@ export function ClientesPage() {
             isOpen={isHubOpen} 
             onClose={() => setIsHubOpen(false)} 
             cliente={selectedCliente} 
-            onUpdate={fetchClientes}
+            onUpdate={() => fetchClientes(tenantId)}
+            tenantId={tenantId} // 🚀 4. PASSANDO O INQUILINO PARA O FORMULÁRIO DE CLIENTE
         />
       )}
     </div>

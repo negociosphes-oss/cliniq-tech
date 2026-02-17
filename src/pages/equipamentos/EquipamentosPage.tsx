@@ -15,6 +15,8 @@ import * as XLSX from 'xlsx';
 export function EquipamentosPage() {
   const [loading, setLoading] = useState(true);
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR DE INQUILINO
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -29,21 +31,52 @@ export function EquipamentosPage() {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchEquipamentos = async () => {
+  // 🚀 1. MOTOR FAREJADOR: Identifica quem está logado pela URL
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        // Se for localhost puro, app ou www, cai na Sede (ID 1)
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
+
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchEquipamentos(tId); // Chama a busca já passando a chave da empresa
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. FECHADURA DE BUSCA: Só puxa ativos do Tenant ID correto
+  const fetchEquipamentos = async (tId: number) => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('equipamentos')
         .select(`*, cliente:clientes(id, nome_fantasia), tecnologia:tecnologias!fk_tecnologia_oficial(nome, fabricante, modelo, registro_anvisa)`)
+        .eq('tenant_id', tId) // A TRAVA DE SEGURANÇA ESTÁ AQUI
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setEquipamentos(data || []);
-    } catch (error) { console.error(error); } 
-    finally { setLoading(false); }
+    } catch (error) { 
+      console.error(error); 
+    } finally { 
+      setLoading(false); 
+    }
   };
-
-  useEffect(() => { fetchEquipamentos(); }, []);
 
   // Dados para Filtros
   const uniqueData = useMemo(() => {
@@ -117,17 +150,21 @@ export function EquipamentosPage() {
   const handleNew = () => { setSelectedItem(null); setFormVersion(v => v + 1); setIsModalOpen(true); };
   const handleEdit = (item: any) => { setSelectedItem(item); setFormVersion(v => v + 1); setIsModalOpen(true); };
   const handleHistory = (item: any) => { setSelectedItem(item); setIsDetailsOpen(true); };
+  
+  // 🚀 3. FECHADURA DE EXCLUSÃO
   const handleDelete = async (id: number) => {
-    if (!confirm('Deseja excluir?')) return;
-    await supabase.from('equipamentos').delete().eq('id', id);
-    fetchEquipamentos();
+    if (!confirm('Deseja excluir permanentemente este ativo?')) return;
+    await supabase.from('equipamentos')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId); // Trava extra hacker-proof
+    fetchEquipamentos(tenantId);
   };
+  
   const clearFilters = () => { setFilters({ buscaGlobal: '', tag: '', serial: '', patrimonio: '', tipo: '', fabricante: '', modelo: '', cliente: '', status: '' }); setSortConfig(null); };
   const requestSort = (key: string) => { setSortConfig({ key, direction: sortConfig?.direction === 'asc' ? 'desc' : 'asc' }); };
 
   // Exportação
-  const handleDownloadTemplate = () => { /* Mesma lógica anterior */ };
-  const handleFileUpload = async (e: any) => { /* Mesma lógica anterior */ };
   const handleExportExcel = () => {
     const data = processedItems.map(i => ({
         TAG: i.tag, EQUIPAMENTO: i.nome || i.tecnologia?.nome, FABRICANTE: i.fabricante || i.tecnologia?.fabricante,
@@ -137,7 +174,6 @@ export function EquipamentosPage() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Inventario");
     XLSX.writeFile(wb, "Inventario.xlsx");
   };
-  const handleGenerateReport = () => { /* Mesma lógica PDF */ };
 
   return (
     <div className="p-8 animate-fadeIn max-w-[1900px] mx-auto pb-24">
@@ -176,24 +212,32 @@ export function EquipamentosPage() {
           <div className="p-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-5 bg-slate-50/30">
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase">Fabricante</label>
-                <select className="input-filter" value={filters.fabricante} onChange={e => setFilters({...filters, fabricante: e.target.value})}>
+                <select className="input-filter cursor-pointer" value={filters.fabricante} onChange={e => setFilters({...filters, fabricante: e.target.value})}>
                     <option value="">Todos</option>{uniqueData.fabricantes.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
              </div>
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase">Cliente</label>
-                <select className="input-filter" value={filters.cliente} onChange={e => setFilters({...filters, cliente: e.target.value})}>
+                <select className="input-filter cursor-pointer" value={filters.cliente} onChange={e => setFilters({...filters, cliente: e.target.value})}>
                     <option value="">Todos</option>{uniqueData.clientes.map(([id, nm]) => <option key={id} value={id}>{nm}</option>)}
                 </select>
              </div>
-             {/* Outros filtros... */}
+             <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Status</label>
+                <select className="input-filter cursor-pointer" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}>
+                    <option value="">Todos</option>
+                    <option value="operacional">Operacional</option>
+                    <option value="manutenção">Em Manutenção</option>
+                    <option value="inativo">Inativo / Desativado</option>
+                </select>
+             </div>
           </div>
         )}
       </div>
 
       {/* TABELA */}
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-        {loading ? <div className="p-12 text-center"><Loader2 className="animate-spin text-blue-500 mx-auto"/></div> : (
+        {loading ? <div className="p-12 text-center"><Loader2 className="animate-spin text-blue-500 mx-auto" size={32}/></div> : (
         <div className="overflow-x-auto">
             <table className="w-full text-left">
                 <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black border-b border-slate-100 select-none">
@@ -225,7 +269,9 @@ export function EquipamentosPage() {
         )}
       </div>
 
-      {isModalOpen && <EquipamentosForm key={`form-${selectedItem?.id || 'new'}-${formVersion}`} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchEquipamentos(); }} equipmentToEdit={selectedItem} />}
+      {/* 🚀 4. PASSANDO O TENANT ID PARA O FORMULÁRIO */}
+      {isModalOpen && <EquipamentosForm key={`form-${selectedItem?.id || 'new'}-${formVersion}`} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchEquipamentos(tenantId); }} equipmentToEdit={selectedItem} tenantId={tenantId} />}
+      
       {isDetailsOpen && selectedItem && <EquipamentoDetalhes isOpen={isDetailsOpen} onClose={() => setIsDetailsOpen(false)} equipamento={selectedItem} />}
       
       <style>{`

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Server, Edit3, Trash2, CheckCircle, XCircle, FileSpreadsheet, Download, Cpu, Factory, FileText, Save, X } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
+import { Plus, Search, Server, Edit3, Trash2, CheckCircle, XCircle, FileSpreadsheet, Download, Cpu, Factory, FileText, Save, X, Loader2 } from 'lucide-react';import { supabase } from '../../supabaseClient';
 import * as XLSX from 'xlsx';
 
 export function TecnologiasPage() {
   const [loading, setLoading] = useState(true);
   const [tecnologias, setTecnologias] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
+  
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
   
   // Modal e Edição
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,39 +25,77 @@ export function TecnologiasPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchTecnologias = async () => {
+  // 🚀 1. MOTOR FAREJADOR
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
+
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchTecnologias(tId);
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. FECHADURA DE LEITURA
+  const fetchTecnologias = async (tId: number) => {
     setLoading(true);
-    const { data, error } = await supabase.from('tecnologias').select('*').order('nome');
+    const { data, error } = await supabase
+        .from('tecnologias')
+        .select('*')
+        .eq('tenant_id', tId) // Trava de Segurança
+        .order('nome');
     if (!error) setTecnologias(data || []);
     setLoading(false);
   };
 
-  useEffect(() => { fetchTecnologias(); }, []);
-
+  // 🚀 3. CARIMBO DE AUTORIA NO SALVAMENTO MANUAL
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formData.nome || !formData.fabricante || !formData.modelo) return alert('Preencha os campos obrigatórios (*).');
 
     try {
-      const payload = { ...formData, nome: formData.nome.toUpperCase() };
+      // Injeta o tenant_id silenciosamente
+      const payload = { ...formData, nome: formData.nome.toUpperCase(), tenant_id: tenantId };
 
       if (editingItem) {
-        await supabase.from('tecnologias').update(payload).eq('id', editingItem.id);
+        await supabase.from('tecnologias').update(payload).eq('id', editingItem.id).eq('tenant_id', tenantId);
       } else {
         await supabase.from('tecnologias').insert([payload]);
       }
       setIsModalOpen(false);
-      fetchTecnologias();
+      fetchTecnologias(tenantId);
     } catch (error: any) {
       alert('Erro ao salvar: ' + error.message);
     }
   };
 
+  // 🚀 4. TRAVA DE EXCLUSÃO (HACKER-PROOF)
   const handleDelete = async (id: number) => {
     if (!confirm('ATENÇÃO: Excluir este modelo pode afetar equipamentos vinculados. Continuar?')) return;
-    const { error } = await supabase.from('tecnologias').delete().eq('id', id);
+    const { error } = await supabase
+        .from('tecnologias')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId); // Trava
+        
     if (error) alert('Erro ao excluir. Verifique vínculos.');
-    else fetchTecnologias();
+    else fetchTecnologias(tenantId);
   };
 
   const handleDownloadTemplate = () => {
@@ -68,6 +107,7 @@ export function TecnologiasPage() {
     XLSX.writeFile(wb, "Template_Importacao.xlsx");
   };
 
+  // 🚀 5. CARIMBO DE AUTORIA NO UPLOAD EM LOTE
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,14 +129,15 @@ export function TecnologiasPage() {
           modelo: row['MODELO'] || '',
           registro_anvisa: row['ANVISA'] || '',
           criticidade: row['CRITICIDADE'] || 'Média',
-          ativo: true
+          ativo: true,
+          tenant_id: tenantId // 🚀 Injeta o dono em todas as linhas
         }));
 
         const { error } = await supabase.from('tecnologias').insert(payload);
         if (error) throw error;
         
-        alert(`${payload.length} modelos importados!`);
-        fetchTecnologias();
+        alert(`${payload.length} modelos importados com sucesso!`);
+        fetchTecnologias(tenantId);
       } catch (error) {
         alert('Erro na importação.');
       } finally {
@@ -173,7 +214,11 @@ export function TecnologiasPage() {
 
       {/* Grid de Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {filteredList.map(item => (
+         {loading ? (
+           <div className="col-span-full py-12 flex justify-center text-indigo-500"><Loader2 className="animate-spin" size={32}/></div>
+         ) : filteredList.length === 0 ? (
+           <div className="col-span-full py-12 text-center text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-3xl">Nenhum modelo cadastrado.</div>
+         ) : filteredList.map(item => (
             <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative">
                
                <div className="flex justify-between items-start mb-4">
@@ -201,7 +246,7 @@ export function TecnologiasPage() {
 
       {/* Modal Clean */}
       {isModalOpen && (
-         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 animate-fadeIn">
+         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col overflow-hidden">
                
                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">

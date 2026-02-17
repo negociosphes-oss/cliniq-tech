@@ -25,7 +25,6 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
   const carregarChecklist = async () => {
     setLoading(true);
     try {
-      // 1. Verifica se JÁ existe uma execução salva
       const { data: execExistente } = await supabase.from('os_checklists_execucao')
         .select('*').eq('ordem_servico_id', osId).maybeSingle();
 
@@ -38,13 +37,11 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
         setStatus(execExistente.status);
         setOrigem('Manual');
       } else {
-        // 2. MOTOR DE REGRAS INTELIGENTE
         const { data: eq } = await supabase.from('equipamentos').select('tecnologia_id').eq('id', equipamentoId).single();
         
         let modeloEncontrado = null;
         let origemEncontrada: any = 'Manual';
 
-        // A) Tenta Regra ESPECÍFICA
         if (eq?.tecnologia_id) {
           const { data: regraEsp } = await supabase.from('checklists_regras')
             .select('checklist_id')
@@ -59,7 +56,6 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
           }
         }
 
-        // B) Se falhar, Tenta Regra GENÉRICA
         if (!modeloEncontrado) {
             const { data: regraGen } = await supabase.from('checklists_regras')
                 .select('checklist_id')
@@ -74,10 +70,8 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             }
         }
 
-        // C) Fallback Seguro (Correção do Erro toLowerCase)
         if (!modeloEncontrado) {
              const { data: modelos } = await supabase.from('checklists_biblioteca').select('*');
-             // BLINDAGEM DE SEGURANÇA AQUI:
              const match = modelos?.find(m => String(m.nome || '').toLowerCase().includes(String(tipoServico || '').toLowerCase()));
              if (match) {
                  modeloEncontrado = match;
@@ -89,15 +83,23 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             setModelo(modeloEncontrado);
             setOrigem(origemEncontrada);
             
+            // 🛡️ BLINDAGEM DO PAYLOAD (Evita o erro PGRST204)
+            // Enviamos APENAS os dados vitais de relacionamento. 
+            // Retiramos o campo "respostas: null" que estava engasgando o Supabase.
             const payload = {
                 ordem_servico_id: osId,
                 checklist_id: modeloEncontrado.id,
-                respostas: {},
-                status: 'Pendente',
-                data_inicio: new Date().toISOString()
+                status: 'Pendente'
             };
-            const { data: newExec } = await supabase.from('os_checklists_execucao').insert([payload]).select().single();
-            if (newExec) setExecucaoId(newExec.id);
+            
+            const { data: newExec, error } = await supabase.from('os_checklists_execucao').insert([payload]).select().single();
+            
+            if (error) {
+                console.error("Erro ao criar execução:", error);
+                showToast("Erro ao vincular checklist.", "error");
+            } else if (newExec) {
+                setExecucaoId(newExec.id);
+            }
         }
       }
     } catch (e) {
@@ -118,15 +120,16 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
 
     const novoStatus = finalizar ? 'Concluído' : 'Em Andamento';
     const payload = {
-      respostas: respostas,
+      respostas: JSON.stringify(respostas),
       observacoes: observacao,
       status: novoStatus,
-      data_conclusao: finalizar ? new Date().toISOString() : null,
-      data_atualizacao: new Date().toISOString()
+      data_conclusao: finalizar ? new Date().toISOString() : null
     };
 
     try {
-      await supabase.from('os_checklists_execucao').update(payload).eq('id', execucaoId);
+      const { error } = await supabase.from('os_checklists_execucao').update(payload).eq('id', execucaoId);
+      if (error) throw error;
+      
       setStatus(novoStatus);
       showToast(finalizar ? 'Checklist finalizado!' : 'Progresso salvo.', 'success');
     } catch (e: any) {
@@ -158,7 +161,6 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
 
   return (
     <div className="max-w-5xl mx-auto animate-fadeIn pb-10">
-      
       <div className="bg-theme-page border border-theme p-6 rounded-2xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
         <div className="flex items-center gap-4">
             <div className="p-3 bg-theme-card text-primary-theme rounded-xl shadow-sm border border-theme">
@@ -170,15 +172,11 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
                     {origem === 'Generico' && <span className="bg-theme-card text-theme-muted border border-theme text-[10px] px-2 py-0.5 rounded-full font-black uppercase flex items-center gap-1"><Zap size={10}/> Padrão</span>}
                     {origem === 'Especifico' && <span className="bg-primary-theme text-white text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Específico</span>}
                 </div>
-                <p className="text-theme-muted text-sm font-bold mt-1">
-                    {perguntas.length} itens de verificação.
-                </p>
+                <p className="text-theme-muted text-sm font-bold mt-1">{perguntas.length} itens de verificação.</p>
             </div>
         </div>
         <div className={`px-4 py-2 rounded-lg font-black uppercase text-xs tracking-widest border shadow-sm
-            ${status === 'Concluído' || status === 'Finalizado'
-                ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+            ${isLocked ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
             {status}
         </div>
       </div>
@@ -198,42 +196,26 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             <div key={idx} className={`bg-theme-card border border-theme p-6 rounded-2xl shadow-sm transition-all ${isLocked ? 'opacity-80' : 'hover:border-primary-theme'}`}>
               <div className="mb-4">
                   <span className="text-xs font-black text-primary-theme mr-2">0{idx + 1}.</span>
-                  <span className="font-bold text-theme-main text-sm md:text-base">
-                    {textoPergunta} {item.obrigatorio && <span className="text-rose-500">*</span>}
-                  </span>
+                  <span className="font-bold text-theme-main text-sm md:text-base">{textoPergunta} {item.obrigatorio && <span className="text-rose-500">*</span>}</span>
               </div>
-              
               <div className="flex flex-wrap gap-2">
                  {(!item.tipo || item.tipo === 'sim_nao') && ['Conforme', 'Não Conforme', 'N.A.'].map(opcao => {
                       const isSelected = respostas[idx] === opcao;
-                      let btnClass = "bg-theme-page text-theme-muted border-theme hover:bg-slate-200 dark:hover:bg-slate-800";
+                      let btnClass = "bg-theme-page text-theme-muted border-theme hover:bg-slate-200";
                       
                       if (isSelected) {
                           if (opcao === 'Não Conforme') btnClass = "bg-rose-500 text-white border-rose-600 shadow-md ring-2 ring-rose-500/30";
                           else if (opcao === 'N.A.') btnClass = "bg-slate-500 text-white border-slate-600 shadow-md";
                           else btnClass = "bg-primary-theme text-white border-primary-theme shadow-md ring-2 ring-primary-theme/30";
                       }
-
                       return (
-                        <button
-                            key={opcao}
-                            onClick={() => !isLocked && handleAnswer(idx, opcao)}
-                            disabled={isLocked}
-                            className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all border ${btnClass} ${isLocked ? 'cursor-not-allowed' : ''}`}
-                        >
+                        <button key={opcao} onClick={() => !isLocked && handleAnswer(idx, opcao)} disabled={isLocked} className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all border ${btnClass} ${isLocked ? 'cursor-not-allowed' : ''}`}>
                             {opcao}
                         </button>
                       );
                  })}
-
                  {item.tipo === 'texto' && (
-                    <input 
-                        className="input-theme w-full h-12 px-4 rounded-xl font-medium"
-                        placeholder="Digite a resposta..."
-                        value={respostas[idx] || ''}
-                        onChange={e => handleAnswer(idx, e.target.value)}
-                        disabled={isLocked}
-                    />
+                    <input className="input-theme w-full h-12 px-4 rounded-xl font-medium" placeholder="Digite a resposta..." value={respostas[idx] || ''} onChange={e => handleAnswer(idx, e.target.value)} disabled={isLocked} />
                  )}
               </div>
             </div>
@@ -243,26 +225,13 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
 
       <div className="mt-8 bg-theme-card border border-theme p-6 rounded-2xl shadow-sm">
           <label className="text-xs font-black uppercase text-theme-muted mb-2 block">Observações Gerais</label>
-          <textarea 
-            className="input-theme w-full p-4 rounded-xl font-medium h-24 resize-none mb-6"
-            placeholder="Observações finais sobre a execução..."
-            value={observacao}
-            onChange={(e) => setObservacao(e.target.value)}
-            disabled={isLocked}
-          />
-          
+          <textarea className="input-theme w-full p-4 rounded-xl font-medium h-24 resize-none mb-6" placeholder="Observações finais..." value={observacao} onChange={(e) => setObservacao(e.target.value)} disabled={isLocked} />
           {!isLocked && (
             <div className="flex flex-col md:flex-row gap-3">
-                <button 
-                    onClick={() => handleSave(false)} 
-                    className="flex-1 py-4 bg-theme-page border border-theme text-theme-muted hover:text-theme-main rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                >
+                <button onClick={() => handleSave(false)} className="flex-1 py-4 bg-theme-page border border-theme text-theme-muted hover:text-theme-main rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
                     <Save size={20}/> Salvar Progresso
                 </button>
-                <button 
-                    onClick={() => handleSave(true)}
-                    className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95"
-                >
+                <button onClick={() => handleSave(true)} className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95">
                     <CheckCircle size={20}/> FINALIZAR CHECKLIST
                 </button>
             </div>

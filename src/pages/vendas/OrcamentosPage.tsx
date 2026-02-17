@@ -10,6 +10,8 @@ export function OrcamentosPage() {
   const [orcamentos, setOrcamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+  
   // Estados de Filtro
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('TODOS');
@@ -20,22 +22,58 @@ export function OrcamentosPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
-  useEffect(() => { fetchOrcamentos(); }, []);
+  // 🚀 1. MOTOR FAREJADOR
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
 
-  const fetchOrcamentos = async () => {
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchOrcamentos(tId);
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. FECHADURA DO PIPELINE DE VENDAS
+  const fetchOrcamentos = async (tId: number) => {
     setLoading(true);
-    const { data } = await supabase.from('orçamentos').select('*, clientes(nome_fantasia, doc_id)').order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('orçamentos')
+      .select('*, clientes(nome_fantasia, doc_id)')
+      .eq('tenant_id', tId) // Trava Hacker-Proof
+      .order('created_at', { ascending: false });
+      
     setOrcamentos(data || []);
     setLoading(false);
   };
 
+  // 🚀 3. TRAVA DE EXCLUSÃO
   const deleteOrcamento = async (id: number) => {
     if(!confirm("Deseja excluir este orçamento permanentemente?")) return;
-    await supabase.from('orçamentos').delete().eq('id', id);
-    fetchOrcamentos();
+    await supabase
+      .from('orçamentos')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId); // Trava Extra
+    fetchOrcamentos(tenantId);
   };
 
-  // --- NOVA FUNÇÃO INTELIGENTE: APROVAR E GERAR FINANCEIRO ---
+  // 🚀 4. AUTOMAÇÃO FINANCEIRA BLINDADA
   const aprovarEGerarFinanceiro = async (orcamento: any) => {
       if (orcamento.status === 'APROVADO') return alert("Este orçamento já está aprovado.");
       
@@ -46,27 +84,27 @@ export function OrcamentosPage() {
       if (!confirmacao) return;
 
       try {
-          // 1. Atualiza o status do orçamento
+          // 1. Atualiza o status do orçamento com a Trava de Segurança
           const { error: errOrc } = await supabase
               .from('orçamentos')
               .update({ status: 'APROVADO', data_aprovacao: new Date().toISOString() })
-              .eq('id', orcamento.id);
+              .eq('id', orcamento.id)
+              .eq('tenant_id', tenantId); 
 
           if (errOrc) throw new Error("Erro ao atualizar orçamento.");
 
-          // 2. Cria o lançamento no Financeiro
-          // Definimos o vencimento padrão para 30 dias se não houver lógica específica, ou usamos a data de hoje.
-          // Aqui vou usar a data de hoje como data de lançamento/competência.
+          // 2. Cria o lançamento no Financeiro (Com a Vacina Tenant)
           const vencimentoEstimado = new Date();
-          vencimentoEstimado.setDate(vencimentoEstimado.getDate() + 30); // Vencimento padrão p/ 30 dias (ajustável depois)
+          vencimentoEstimado.setDate(vencimentoEstimado.getDate() + 30); 
 
           const payloadFinanceiro = {
+              tenant_id: tenantId, // 🚀 CARIMBO DO INQUILINO INJETADO AQUI
               descricao: `Faturamento Orçamento #${orcamento.numero_orcamento}`,
               cliente_id: orcamento.cliente_id,
               valor_total: orcamento.valor_total,
               data_vencimento: vencimentoEstimado.toISOString().split('T')[0],
               status: 'PENDENTE',
-              categoria: 'SERVICO', // Padrão, já que vem de orçamento
+              categoria: 'SERVICO', 
               centro_custo: 'VENDAS',
               origem: 'ORCAMENTO',
               origem_id: orcamento.id,
@@ -80,7 +118,7 @@ export function OrcamentosPage() {
           if (errFin) throw new Error("Orçamento aprovado, mas erro ao gerar financeiro: " + errFin.message);
 
           alert("Sucesso! Orçamento aprovado e conta a receber gerada no Financeiro.");
-          fetchOrcamentos();
+          fetchOrcamentos(tenantId);
 
       } catch (error: any) {
           alert(error.message);
@@ -261,7 +299,14 @@ export function OrcamentosPage() {
         </div>
       </div>
       
-      <OrcamentoFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={fetchOrcamentos} editId={editId} />
+      {/* 🚀 5. PROPAGAÇÃO DO INQUILINO PARA O MODAL */}
+      <OrcamentoFormModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={() => fetchOrcamentos(tenantId)} 
+        editId={editId} 
+        tenantId={tenantId} 
+      />
     </div>
   );
 }

@@ -1,285 +1,263 @@
 import React from 'react';
-import { Page, Text, View, Document, StyleSheet, Image, Font } from '@react-pdf/renderer';
-import type { CertificadoPayload } from '../types/index';
+import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
 
-// ==========================================
-// 1. ESTILIZAÇÃO (LAYOUT A4 PROFISSIONAL)
-// ==========================================
 const styles = StyleSheet.create({
-  page: {
-    flexDirection: 'column',
-    backgroundColor: '#FFFFFF',
-    padding: 30, // Margem de impressão
-    fontFamily: 'Helvetica',
-    fontSize: 9,
-    color: '#333333',
-    lineHeight: 1.3,
-  },
-  // Cabeçalho
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-    paddingBottom: 10,
-  },
-  headerLeft: {
-    flexDirection: 'column',
-  },
-  headerRight: {
-    textAlign: 'right',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1e293b', // Slate-800
-    textTransform: 'uppercase',
-  },
-  subtitle: {
-    fontSize: 10,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  // Seções Gerais
-  section: {
-    marginBottom: 15,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 4,
-  },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    backgroundColor: '#F1F5F9',
-    padding: 4,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    color: '#0f172a',
-  },
-  row: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  label: {
-    width: 90,
-    fontWeight: 'bold',
-    color: '#475569',
-  },
-  value: {
-    flex: 1,
-    color: '#0f172a',
-  },
-  // Tabelas
-  table: {
-    display: 'flex',
-    width: 'auto',
-    borderStyle: 'solid',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginTop: 10,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    alignItems: 'center',
-    minHeight: 24,
-  },
-  tableHeader: {
-    backgroundColor: '#F8FAFC',
-    fontWeight: 'bold',
-    fontSize: 8,
-    color: '#475569',
-  },
-  tableCell: {
-    padding: 5,
-    fontSize: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#E2E8F0',
-  },
-  // Larguras das colunas (Soma = 100%)
-  col1: { width: '35%' }, // Descrição
-  col2: { width: '10%', textAlign: 'center' }, // Unid
-  col3: { width: '10%', textAlign: 'center' }, // Ref
-  col4: { width: '15%', textAlign: 'center' }, // Faixa
-  col5: { width: '10%', textAlign: 'center' }, // Lido
-  col6: { width: '10%', textAlign: 'center' }, // Erro
-  col7: { width: '10%', textAlign: 'center', borderRightWidth: 0 }, // Status
+  page: { flexDirection: 'column', backgroundColor: '#FFFFFF', padding: 30, fontFamily: 'Helvetica', fontSize: 8, color: '#1e293b' },
+  
+  // Header Principal (Azul Marinho)
+  headerCard: { backgroundColor: '#1e3a8a', borderRadius: 8, padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', width: '60%' },
+  logoBox: { backgroundColor: '#ffffff', padding: 4, borderRadius: 6, marginRight: 12, height: 46, width: 90, justifyContent: 'center', alignItems: 'center' },
+  headerRightWrapper: { flexDirection: 'row', alignItems: 'center', width: '40%', justifyContent: 'flex-end', gap: 10 },
+  headerRight: { textAlign: 'center', backgroundColor: '#ffffff', padding: 8, borderRadius: 6, flex: 1 },
+  qrCode: { width: 50, height: 50, backgroundColor: '#ffffff', padding: 2, borderRadius: 4 },
+  
+  title: { fontSize: 11, fontWeight: 'bold', color: '#1e3a8a', textTransform: 'uppercase' },
+  subtitle: { fontSize: 8, color: '#64748b', marginTop: 2, fontWeight: 'bold' },
+  emissao: { fontSize: 7, marginTop: 4, color: '#475569', fontWeight: 'bold' },
+  companyName: { fontSize: 13, fontWeight: 'bold', color: '#ffffff', textTransform: 'uppercase' },
+  companySub: { fontSize: 7, color: '#93c5fd', marginTop: 2 },
+  
+  // Grids e Caixas
+  grid2: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  box: { flex: 1, borderWidth: 1, borderColor: '#3b82f6', borderRadius: 6, overflow: 'hidden' },
+  
+  // Títulos das Caixas (Azul Claro)
+  boxHeader: { backgroundColor: '#0284c7', padding: 6, paddingHorizontal: 10, color: '#ffffff', fontSize: 9, fontWeight: 'bold', textTransform: 'uppercase' },
+  boxBody: { padding: 10, backgroundColor: '#f0f9ff' },
+  
+  // Campos estilo "Pílula"
+  row: { flexDirection: 'row', marginBottom: 4, alignItems: 'center' },
+  lbl: { width: 85, fontWeight: 'bold', color: '#334155', fontSize: 7, textTransform: 'uppercase' },
+  valBox: { flex: 1, backgroundColor: '#e0f2fe', paddingVertical: 4, paddingHorizontal: 6, borderRadius: 4, borderWidth: 1, borderColor: '#bae6fd' },
+  valText: { color: '#0f172a', fontSize: 7, fontWeight: 'bold', textTransform: 'uppercase' },
 
-  // Rodapé e Assinaturas
-  conclusionBox: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#F0FDFA', // Verde bem claro
-    borderWidth: 1,
-    borderColor: '#14B8A6',
-    borderRadius: 4,
-    textAlign: 'center',
-  },
-  conclusionText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0D9488',
-    textTransform: 'uppercase',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 30,
-    left: 30,
-    right: 30,
-    textAlign: 'center',
-    fontSize: 7,
-    color: '#94a3b8',
-    borderTopWidth: 1,
-    borderTopColor: '#EEEEEE',
-    paddingTop: 10,
-  },
+  // Seção Tabela Resultados
+  section: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, overflow: 'hidden', marginBottom: 15 },
+  table: { width: '100%' },
+  tableHeaderRow: { flexDirection: 'row', backgroundColor: '#bae6fd', borderBottomWidth: 2, borderBottomColor: '#ffffff' },
+  tableHeaderCell: { padding: 6, fontSize: 7, fontWeight: 'bold', color: '#0369a1', textTransform: 'uppercase' },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', alignItems: 'center', minHeight: 20 },
+  tableCell: { padding: 6, fontSize: 7, color: '#334155' },
+
+  col1: { width: '30%' }, col2: { width: '10%', textAlign: 'center' }, col3: { width: '15%', textAlign: 'center' }, col5: { width: '15%', textAlign: 'center' }, col6: { width: '15%', textAlign: 'center' }, col7: { width: '15%', textAlign: 'center' },
+
+  // 🚀 NOVO: Estilos da Rastreabilidade (Blocos Empilhados)
+  padraoBlock: { padding: 8, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#ffffff' },
+  padraoRow: { flexDirection: 'row', marginBottom: 4, alignItems: 'flex-start' },
+  pLabel: { fontWeight: 'bold', color: '#0f172a', fontSize: 7, marginRight: 4, width: 50 },
+  pValue: { color: '#334155', fontSize: 7, flex: 1, textTransform: 'uppercase' },
+  pLabelShort: { fontWeight: 'bold', color: '#0f172a', fontSize: 7, marginRight: 4 },
+  pValueShort: { color: '#334155', fontSize: 7, width: 80, textTransform: 'uppercase' },
+
+  // Notas Técnicas e Normativas
+  noteTitle: { fontSize: 8, fontWeight: 'bold', color: '#0369a1', marginTop: 8, marginBottom: 2, textTransform: 'uppercase' },
+  noteText: { fontSize: 7.5, color: '#334155', textAlign: 'justify', lineHeight: 1.4 },
+
+  // Parecer Final
+  conclusionBox: { marginTop: 10, padding: 15, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#22c55e', borderRadius: 6, textAlign: 'center' },
+  conclusionText: { fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase', color: '#166534', marginTop: 4 },
+
+  // Assinaturas e Rodapé
+  sigs: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 40, pageBreakInside: 'avoid' },
+  sigBox: { width: '40%', alignItems: 'center' },
+  sigLine: { borderTopWidth: 1, borderTopColor: '#64748b', paddingTop: 5, width: '100%', alignItems: 'center' },
+  sigImg: { height: 40, objectFit: 'contain', marginBottom: 2 },
+  sigName: { fontWeight: 'bold', fontSize: 9, color: '#0f172a', textTransform: 'uppercase' },
+  sigLabel: { fontSize: 7, color: '#64748b', marginTop: 2, textTransform: 'uppercase' },
+
+  footer: { position: 'absolute', bottom: 30, left: 30, right: 30, textAlign: 'center', fontSize: 7, color: '#94a3b8', borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 },
 });
 
-interface PDFProps {
-  data: CertificadoPayload;
-}
+const safeUrl = (url: any) => {
+  if (!url || typeof url !== 'string') return undefined;
+  try { return encodeURI(url); } catch { return undefined; }
+};
 
-// ==========================================
-// 2. COMPONENTE DOCUMENTO
-// ==========================================
-export const MetrologiaCertificadoPDF: React.FC<PDFProps> = ({ data }) => (
-  <Document>
-    <Page size="A4" style={styles.page}>
-      
-      {/* --- CABEÇALHO --- */}
-      <View style={styles.header}>
+export const CertificadoUnico = ({ data }: { data: any }) => {
+  const urlExecutor = safeUrl(data.assinaturas?.executor_assinatura);
+  const urlResponsavel = safeUrl(data.assinaturas?.responsavel_assinatura);
+  const urlLogo = safeUrl(data.cabecalho?.logo);
+
+  return (
+    <View>
+      {/* 1. DADOS DO LABORATÓRIO / HEADER ENTERPRISE */}
+      <View style={styles.headerCard}>
         <View style={styles.headerLeft}>
-          {/* LOGO DA EMPRESA (Substitua src pelo base64 ou URL pública) */}
-          {/* <Image src="https://sua-url-logo.com/logo.png" style={{ width: 100, marginBottom: 5 }} /> */}
-          <Text style={{ fontSize: 18, fontWeight: 'heavy', color: '#4F46E5' }}>CLINIQ TECH</Text>
-          <Text style={{ fontSize: 8, color: '#64748b' }}>Soluções em Engenharia Clínica</Text>
+          {urlLogo && (
+              <View style={styles.logoBox}>
+                  <Image src={urlLogo} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </View>
+          )}
+          <View style={{ flex: 1 }}>
+              <Text style={styles.companyName}>{data.cabecalho?.empresa || 'ATLAS SYSTEM MEDICAL'}</Text>
+              <Text style={styles.companySub}>CNPJ: {data.cabecalho?.cnpj || '-'} | {data.cabecalho?.contato || '-'}</Text>
+              <Text style={styles.companySub}>{data.cabecalho?.endereco || '-'}</Text>
+          </View>
         </View>
-        <View style={styles.headerRight}>
-          <Text style={styles.title}>Certificado de Calibração</Text>
-          <Text style={styles.subtitle}>Nº {data.numero_certificado}</Text>
-          <Text style={{ fontSize: 8, marginTop: 5 }}>Emissão: {data.data_emissao}</Text>
-          <Text style={{ fontSize: 7, color: '#94a3b8' }}>UUID: {data.uuid_certificado.slice(0, 8)}...</Text>
-        </View>
-      </View>
-
-      {/* --- DADOS DO CLIENTE E EQUIPAMENTO --- */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-        {/* Lado Esquerdo: Cliente */}
-        <View style={[styles.section, { flex: 1 }]}>
-          <Text style={styles.sectionTitle}>Dados do Cliente</Text>
-          <View style={styles.row}><Text style={styles.label}>Razão Social:</Text><Text style={styles.value}>{data.cliente.razao_social}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>CNPJ/CPF:</Text><Text style={styles.value}>{data.cliente.cnpj}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Endereço:</Text><Text style={styles.value}>{data.cliente.endereco}</Text></View>
-        </View>
-
-        {/* Lado Direito: Equipamento */}
-        <View style={[styles.section, { flex: 1 }]}>
-          <Text style={styles.sectionTitle}>Objeto de Ensaio</Text>
-          <View style={styles.row}><Text style={styles.label}>Equipamento:</Text><Text style={styles.value}>{data.equipamento.nome}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Fabricante:</Text><Text style={styles.value}>{data.equipamento.fabricante} / {data.equipamento.modelo}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Nº Série:</Text><Text style={styles.value}>{data.equipamento.numero_serie}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Patrimônio:</Text><Text style={styles.value}>{data.equipamento.patrimonio}</Text></View>
+        <View style={styles.headerRightWrapper}>
+          <View style={styles.headerRight}>
+            <Text style={styles.title}>Certificado RBC</Text>
+            <Text style={styles.subtitle}>Nº {data.numero}</Text>
+            <Text style={styles.emissao}>Emissão: {data.emissao}</Text>
+          </View>
+          {data.qr_code && <Image src={data.qr_code} style={styles.qrCode} />}
         </View>
       </View>
 
-      {/* --- METODOLOGIA E PADRÕES --- */}
+      {/* 2. IDENTIFICAÇÃO DETALHADA DO EQUIPAMENTO MÉDICO & CLIENTE */}
+      <View style={styles.grid2}>
+        <View style={styles.box}>
+          <Text style={styles.boxHeader}>Dados do Cliente</Text>
+          <View style={styles.boxBody}>
+             <View style={styles.row}><Text style={styles.lbl}>Unidade:</Text><View style={styles.valBox}><Text style={styles.valText}>{data.cliente?.nome || '-'}</Text></View></View>
+             <View style={styles.row}><Text style={styles.lbl}>Documento:</Text><View style={styles.valBox}><Text style={styles.valText}>{data.cliente?.doc || '-'}</Text></View></View>
+          </View>
+        </View>
+        <View style={styles.box}>
+          <Text style={styles.boxHeader}>Objeto de Ensaio</Text>
+          <View style={styles.boxBody}>
+             <View style={styles.row}><Text style={styles.lbl}>Equipamento:</Text><View style={[styles.valBox, { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }]}><Text style={[styles.valText, { color: '#166534' }]}>{data.equipamento?.nome || '-'}</Text></View></View>
+             <View style={styles.row}><Text style={styles.lbl}>Modelo/Fab:</Text><View style={[styles.valBox, { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }]}><Text style={[styles.valText, { color: '#166534' }]}>{data.equipamento?.modelo} / {data.equipamento?.fabricante}</Text></View></View>
+             <View style={styles.row}><Text style={styles.lbl}>Série/TAG:</Text><View style={[styles.valBox, { backgroundColor: '#dcfce7', borderColor: '#bbf7d0' }]}><Text style={[styles.valText, { color: '#166534' }]}>{data.equipamento?.serie} / {data.equipamento?.tag}</Text></View></View>
+          </View>
+        </View>
+      </View>
+
+      {/* 3. RASTREABILIDADE METROLÓGICA (NOVO LAYOUT BLOCO) */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Rastreabilidade Metrológica</Text>
-        
-        <View style={{ marginBottom: 10 }}>
-          <View style={styles.row}><Text style={styles.label}>Procedimento:</Text><Text style={styles.value}>{data.metodologia.procedimento_nome} (Versão {data.metodologia.procedimento_versao})</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Data Execução:</Text><Text style={styles.value}>{data.metodologia.data_execucao}</Text></View>
-          <View style={styles.row}><Text style={styles.label}>Técnico:</Text><Text style={styles.value}>{data.metodologia.tecnico}</Text></View>
-        </View>
+        <Text style={styles.boxHeader}>Rastreabilidade Metrológica (Padrões Utilizados)</Text>
+        <View style={{ backgroundColor: '#f8fafc' }}>
+            {(data.padroes || []).map((p: any, i: number) => (
+              <View key={i} style={[styles.padraoBlock, { backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#f8fafc' }]}>
+                  {/* Linha 1: Nome, TAG e Série */}
+                  <View style={styles.padraoRow}>
+                      <Text style={[styles.pLabel, { width: 70 }]}>{p.index} - Padrão:</Text>
+                      <Text style={[styles.pValue, { fontWeight: 'bold' }]}>{p.nome}</Text>
+                      
+                      <Text style={styles.pLabelShort}>TAG:</Text>
+                      <Text style={[styles.pValueShort, { width: 60 }]}>{p.tag}</Text>
+                      
+                      <Text style={styles.pLabelShort}>Série:</Text>
+                      <Text style={styles.pValueShort}>{p.serie}</Text>
+                  </View>
 
-        {/* Tabela de Padrões */}
-        <View style={styles.table}>
-          <View style={[styles.tableRow, styles.tableHeader]}>
-            <Text style={[styles.tableCell, { flex: 2 }]}>Padrão Utilizado</Text>
-            <Text style={[styles.tableCell, { flex: 1 }]}>Nº Série</Text>
-            <Text style={[styles.tableCell, { flex: 1 }]}>Certificado Origem</Text>
-            <Text style={[styles.tableCell, { flex: 1, borderRightWidth: 0 }]}>Validade no Uso</Text>
-          </View>
-          {data.padroes.map((p, i) => (
-            <View key={i} style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{p.nome}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{p.numero_serie}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{p.certificado_rbc}</Text>
-              <Text style={[styles.tableCell, { flex: 1, borderRightWidth: 0 }]}>{p.validade_no_uso}</Text>
-            </View>
-          ))}
+                  {/* Linha 2: Emissor, Emissão, Validade, Certificado */}
+                  <View style={styles.padraoRow}>
+                      <Text style={[styles.pLabel, { width: 70 }]}>Emissor:</Text>
+                      <Text style={styles.pValue}>{p.emissor}</Text>
+
+                      <Text style={styles.pLabelShort}>Emissão:</Text>
+                      <Text style={[styles.pValueShort, { width: 50 }]}>{p.emissao}</Text>
+
+                      <Text style={styles.pLabelShort}>Validade:</Text>
+                      <Text style={[styles.pValueShort, { width: 50 }]}>{p.validade}</Text>
+
+                      <Text style={styles.pLabelShort}>Certificado:</Text>
+                      <Text style={styles.pValueShort}>{p.certificado}</Text>
+                  </View>
+
+                  {/* Linha 3: Texto de Rastreabilidade */}
+                  <View style={styles.padraoRow}>
+                      <Text style={[styles.pLabel, { width: 70 }]}>Rastreabilidade:</Text>
+                      <Text style={styles.pValue}>{p.rastreabilidade}</Text>
+                  </View>
+              </View>
+            ))}
         </View>
       </View>
 
-      {/* --- RESULTADOS DE MEDIÇÃO (A GRANDE TABELA) --- */}
-      <View>
-        <Text style={[styles.sectionTitle, { backgroundColor: 'transparent', paddingLeft: 0, color: '#334155' }]}>
-          Resultados Obtidos
-        </Text>
-        
+      {/* 5. RESULTADOS DE MEDIÇÃO (ANÁLISE DE ERRO) */}
+      <View style={styles.section}>
+        <Text style={styles.boxHeader}>Resultados da Calibração</Text>
         <View style={styles.table}>
-          {/* Header da Tabela */}
-          <View style={[styles.tableRow, styles.tableHeader]}>
-            <Text style={[styles.tableCell, styles.col1]}>Descrição do Teste</Text>
-            <Text style={[styles.tableCell, styles.col2]}>Unid.</Text>
-            <Text style={[styles.tableCell, styles.col3]}>Ref.</Text>
-            <Text style={[styles.tableCell, styles.col4]}>Faixa Aceitável</Text>
-            <Text style={[styles.tableCell, styles.col5]}>Valor Lido</Text>
-            <Text style={[styles.tableCell, styles.col6]}>Erro</Text>
-            <Text style={[styles.tableCell, styles.col7]}>Status</Text>
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.tableHeaderCell, styles.col1]}>Parâmetro Avaliado</Text>
+            <Text style={[styles.tableHeaderCell, styles.col2]}>Unid.</Text>
+            <Text style={[styles.tableHeaderCell, styles.col3]}>Ref.</Text>
+            <Text style={[styles.tableHeaderCell, styles.col5]}>Lido</Text>
+            <Text style={[styles.tableHeaderCell, styles.col6]}>Incerteza</Text>
+            <Text style={[styles.tableHeaderCell, styles.col7]}>Status</Text>
           </View>
-
-          {/* Linhas de Dados */}
-          {data.resultados.map((item, idx) => (
-            <View key={idx} style={[
-              styles.tableRow, 
-              { backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' } // Efeito Zebrado
-            ]}>
-              <Text style={[styles.tableCell, styles.col1]}>{item.descricao}</Text>
+          {(data.resultados || []).map((item: any, idx: number) => (
+            <View key={idx} style={[styles.tableRow, { backgroundColor: idx % 2 === 0 ? '#FFFFFF' : '#f8fafc' }]}>
+              <Text style={[styles.tableCell, styles.col1]}>{item.teste}</Text>
               <Text style={[styles.tableCell, styles.col2]}>{item.unidade}</Text>
-              <Text style={[styles.tableCell, styles.col3]}>{item.valor_referencia}</Text>
-              <Text style={[styles.tableCell, styles.col4]}>{item.limite_min} a {item.limite_max}</Text>
-              <Text style={[styles.tableCell, styles.col5, { fontWeight: 'bold' }]}>{item.valor_lido}</Text>
-              <Text style={[styles.tableCell, styles.col6]}>{item.erro}</Text>
-              
-              {/* Coluna Status com Cor Condicional (Texto apenas, PDF não suporta className) */}
-              <Text style={[
-                styles.tableCell, styles.col7, 
-                { color: item.conforme ? '#10B981' : '#EF4444', fontWeight: 'bold' }
-              ]}>
-                {item.conforme ? 'APROVADO' : 'FALHA'}
-              </Text>
+              <Text style={[styles.tableCell, styles.col3]}>{item.ref}</Text>
+              <Text style={[styles.tableCell, styles.col5, { fontWeight: 'bold' }]}>{item.lido}</Text>
+              <Text style={[styles.tableCell, styles.col6]}>{item.incerteza || '-'}</Text>
+              <Text style={[styles.tableCell, styles.col7, { color: item.status === 'OK' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }]}>{item.status}</Text>
             </View>
           ))}
         </View>
       </View>
 
-      {/* --- CONCLUSÃO --- */}
-      <View style={styles.conclusionBox}>
-        <Text>PARECER TÉCNICO FINAL</Text>
-        <Text style={[
-          styles.conclusionText,
-          { color: data.resultado_final === 'REPROVADO' ? '#EF4444' : '#0D9488' }
-        ]}>
-          {data.resultado_final.replace('_', ' ')}
+      {/* 4 E 8. NOTAS TÉCNICAS E NORMATIVAS */}
+      <View style={styles.section}>
+        <Text style={styles.boxHeader}>Notas Técnicas & Metodologia</Text>
+        <View style={[styles.boxBody, { backgroundColor: '#f8fafc' }]}>
+           <Text style={styles.noteTitle}>1. Método de Calibração:</Text>
+           <Text style={styles.noteText}>{data.notas_tecnicas?.metodologia}</Text>
+
+           <Text style={styles.noteTitle}>2. Condições Ambientais:</Text>
+           <Text style={styles.noteText}>{data.notas_tecnicas?.condicoes}</Text>
+
+           <Text style={styles.noteTitle}>3. Declaração de Incerteza (k=2, 95%):</Text>
+           <Text style={styles.noteText}>{data.notas_tecnicas?.incerteza}</Text>
+
+           <Text style={styles.noteTitle}>4. Declaração de Rastreabilidade e Regra de Decisão:</Text>
+           <Text style={styles.noteText}>
+              Os resultados apresentados referem-se exclusivamente ao equipamento calibrado nas condições especificadas. 
+              A rastreabilidade metrológica é garantida através de padrões calibrados por laboratórios acreditados à RBC/Inmetro ou órgãos internacionais equivalentes. 
+              A regra de decisão adotada para a declaração de conformidade baseia-se na comparação do Erro de Medição somado à Incerteza (U) contra as tolerâncias estabelecidas em normas técnicas vigentes e manuais do fabricante.
+           </Text>
+
+           <Text style={styles.noteTitle}>5. Observações:</Text>
+           <Text style={styles.noteText}>{data.notas_tecnicas?.obs || 'Sem observações adicionais.'}</Text>
+        </View>
+      </View>
+
+      {/* 6. CONFORMIDADE E VALIDADE */}
+      <View style={[styles.conclusionBox, { borderColor: data.status === 'REPROVADO' ? '#dc2626' : '#22c55e', backgroundColor: data.status === 'REPROVADO' ? '#fef2f2' : '#f0fdf4' }]} wrap={false}>
+        <Text style={{ fontSize: 8, marginBottom: 4, color: '#334155' }}>PARECER TÉCNICO FINAL E CONFORMIDADE</Text>
+        <Text style={[styles.conclusionText, { color: data.status === 'REPROVADO' ? '#dc2626' : '#16a34a' }]}>
+          {data.status === 'REPROVADO' ? 'REPROVADO - IMPRÓPRIO PARA USO CLINICO' : `APROVADO - VÁLIDO ATÉ ${data.validade}`}
         </Text>
       </View>
 
-      <View style={[styles.section, { marginTop: 10, minHeight: 40 }]}>
-        <Text style={styles.sectionTitle}>Observações / Ressalvas</Text>
-        <Text style={{ fontSize: 8, fontStyle: 'italic' }}>{data.observacoes}</Text>
+      {/* 7. ASSINATURAS */}
+      <View style={styles.sigs} wrap={false}>
+         <View style={styles.sigBox}>
+            {urlExecutor ? <Image src={urlExecutor} style={styles.sigImg} /> : <View style={{height: 40}}/>}
+            <View style={styles.sigLine}>
+              <Text style={styles.sigName}>{data.assinaturas?.executor || 'Executor'}</Text>
+              <Text style={styles.sigLabel}>Técnico Responsável</Text>
+            </View>
+         </View>
+         <View style={styles.sigBox}>
+            {urlResponsavel ? <Image src={urlResponsavel} style={styles.sigImg} /> : <View style={{height: 40}}/>}
+            <View style={styles.sigLine}>
+              <Text style={styles.sigName}>{data.assinaturas?.responsavel || 'Responsável'}</Text>
+              <Text style={styles.sigLabel}>Engenheiro Clínico (CREA: {data.assinaturas?.responsavel_reg || '-'})</Text>
+            </View>
+         </View>
       </View>
 
-      {/* --- RODAPÉ --- */}
-      <View style={styles.footer}>
-        <Text>Este certificado não exime a responsabilidade do usuário quanto à verificação diária do equipamento.</Text>
-        <Text>A reprodução deste documento só é permitida na íntegra. | CLINIQ TECH - Sistema de Gestão Enterprise</Text>
-        <Text>Página 1 de 1 (Geração Automática: {data.data_emissao})</Text>
+      <View style={styles.footer} fixed>
+        <Text>Documento oficial emitido digitalmente pela plataforma ATLAS SYSTEM MEDICAL | Autenticação Única: {data.id_doc}</Text>
       </View>
+    </View>
+  );
+};
 
-    </Page>
+export const MetrologiaCertificadoPDF: React.FC<{ data: any }> = ({ data }) => (
+  <Document><Page size="A4" style={styles.page}><CertificadoUnico data={data} /></Page></Document>
+);
+
+export const LoteCertificadosPDF: React.FC<{ lista: any[] }> = ({ lista }) => (
+  <Document>
+    {lista.map((d, i) => (
+      <Page key={i} size="A4" style={styles.page}><CertificadoUnico data={d} /></Page>
+    ))}
   </Document>
 );

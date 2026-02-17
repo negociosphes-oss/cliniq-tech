@@ -9,18 +9,18 @@ import type { Tecnico } from '../../types'
 interface ApontamentosTabProps {
   osId: number;
   tecnicos: Tecnico[];
-  status?: string; // Adicionado para segurança de OS Concluída
+  status?: string;
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   onUpdate: () => void;
 }
 
-export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }: ApontamentosTabProps) {
+export function ApontamentosTab({ osId, status, showToast, onUpdate }: ApontamentosTabProps) {
   const [loading, setLoading] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [apontamentos, setApontamentos] = useState<any[]>([]);
   
-  // 🚀 NOVO ESTADO: Lista autônoma e completa da equipe
-  const [equipeCompleta, setEquipeCompleta] = useState<any[]>(tecnicos || []);
+  // Lista autônoma lendo da tabela oficial: equipe_tecnica
+  const [equipeCompleta, setEquipeCompleta] = useState<any[]>([]);
   
   const [totalHoras, setTotalHoras] = useState({ horas: 0, minutos: 0 });
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -45,20 +45,34 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
 
   useEffect(() => {
     if (osId) {
+        fetchEquipeEAutenticar(); // Dispara a busca inteligente da equipe
         fetchApontamentos();
-        fetchEquipeCompleta(); // Dispara a busca total da equipe
     }
   }, [osId]);
 
-  // 🚀 O MOTOR AUTÔNOMO: Busca todos os usuários sem filtros limitantes
-  const fetchEquipeCompleta = async () => {
+  // MOTOR INTELIGENTE: Busca equipe e pré-seleciona quem está logado!
+  const fetchEquipeEAutenticar = async () => {
     try {
-        const { data, error } = await supabase.from('usuarios').select('id, nome, cargo').order('nome');
-        if (!error && data && data.length > 0) {
-            setEquipeCompleta(data);
+        // 1. Puxa os técnicos reais
+        const { data: equipe, error } = await supabase.from('equipe_tecnica').select('*').order('nome');
+        if (error) throw error;
+        
+        if (equipe && equipe.length > 0) {
+            setEquipeCompleta(equipe);
+
+            // 2. Descobre quem está usando o sistema agora
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            // 3. Se achar o e-mail, já trava o dropdown no técnico logado
+            if (user && user.email) {
+                const tecnicoLogado = equipe.find(t => t.email_login === user.email);
+                if (tecnicoLogado) {
+                    setNovoApontamento(prev => ({ ...prev, tecnico_id: String(tecnicoLogado.id) }));
+                }
+            }
         }
     } catch (e) {
-        console.error("Erro ao buscar equipe autônoma:", e);
+        console.error("Erro ao buscar equipe técnica:", e);
     }
   };
 
@@ -107,11 +121,10 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
           return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
       };
 
-      // Procura na equipe completa primeiro
       const tec = equipeCompleta.find(t => t.nome === item.tecnico_nome);
       
       setNovoApontamento({
-          tecnico_id: tec ? String(tec.id) : '0',
+          tecnico_id: tec ? String(tec.id) : '',
           tipo: item.tipo,
           data_inicio: formatForInput(item.data_inicio),
           data_fim: formatForInput(item.data_fim),
@@ -125,8 +138,10 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
 
   const handleCancelEdit = () => {
       setEditingId(null);
+      // Mantém o técnico logado se cancelar a edição
+      const idAtual = novoApontamento.tecnico_id;
       setNovoApontamento({
-          tecnico_id: '',
+          tecnico_id: idAtual,
           tipo: 'Mão de Obra',
           data_inicio: '',
           data_fim: '',
@@ -135,7 +150,7 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
   };
 
   const handleSave = async () => {
-    if(!novoApontamento.tecnico_id && equipeCompleta.length > 0) return showToast('Selecione o profissional.', 'error');
+    if(!novoApontamento.tecnico_id) return showToast('Selecione o profissional.', 'error');
     if(!novoApontamento.data_inicio) return showToast('Data Início obrigatória.', 'error');
     if(!novoApontamento.data_fim) return showToast('Data Fim obrigatória.', 'error');
     
@@ -148,7 +163,6 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
 
     setLoading(true);
     
-    // Puxa o nome exato do banco de usuários completo
     const tecnicoSelecionado = equipeCompleta.find(t => String(t.id) === String(novoApontamento.tecnico_id));
     const nomeTecnico = tecnicoSelecionado?.nome || 'Profissional Não Identificado';
 
@@ -163,7 +177,6 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
       };
 
       let error;
-      
       if (editingId) {
           const { error: err } = await supabase.from('apontamentos').update(payload).eq('id', editingId);
           error = err;
@@ -172,10 +185,7 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
           error = err;
       }
 
-      if (error) {
-          console.error("Erro Supabase:", error);
-          throw error;
-      }
+      if (error) throw error;
 
       showToast(editingId ? 'Apontamento atualizado!' : 'Apontamento salvo!', 'success');
       handleCancelEdit();
@@ -206,39 +216,39 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
       
       {/* CARD RESUMO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-         <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center gap-5 shadow-sm">
-            <div className="p-4 bg-blue-100 dark:bg-blue-800 text-blue-600 dark:text-blue-200 rounded-full"><Timer size={28}/></div>
+         <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 flex items-center gap-5 shadow-sm">
+            <div className="p-4 bg-blue-100 text-blue-600 rounded-full"><Timer size={28}/></div>
             <div>
                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Total Horas</p>
-               <h3 className="text-3xl font-black text-slate-800 dark:text-white mt-1">{totalHoras.horas}h <span className="text-lg text-slate-400 font-medium">{totalHoras.minutos}m</span></h3>
+               <h3 className="text-3xl font-black text-slate-800 mt-1">{totalHoras.horas}h <span className="text-lg text-slate-400 font-medium">{totalHoras.minutos}m</span></h3>
             </div>
          </div>
-         <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-5 shadow-sm">
-            <div className="p-4 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-full border"><Briefcase size={28}/></div>
+         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex items-center gap-5 shadow-sm">
+            <div className="p-4 bg-white text-slate-500 rounded-full border"><Briefcase size={28}/></div>
             <div>
                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Registros</p>
-               <h3 className="text-3xl font-black text-slate-800 dark:text-white mt-1">{apontamentos.length}</h3>
+               <h3 className="text-3xl font-black text-slate-800 mt-1">{apontamentos.length}</h3>
             </div>
          </div>
       </div>
 
-      {/* FORMULÁRIO (Protegido contra leitura) */}
+      {/* FORMULÁRIO */}
       {!isReadOnly && (
-          <div id="form-apontamento" className={`bg-white dark:bg-slate-800 p-6 rounded-xl border ${editingId ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200'} dark:border-slate-700 shadow-sm relative overflow-hidden transition-all`}>
+          <div id="form-apontamento" className={`bg-white p-6 rounded-xl border ${editingId ? 'border-orange-400 ring-2 ring-orange-100' : 'border-slate-200'} shadow-sm relative overflow-hidden transition-all`}>
             <div className={`absolute top-0 left-0 w-1 h-full ${editingId ? 'bg-orange-500' : 'bg-blue-500'}`}></div>
-            <h4 className="font-bold text-lg mb-6 flex items-center gap-2 text-slate-700 dark:text-white">
+            <h4 className="font-bold text-lg mb-6 flex items-center gap-2 text-slate-700">
                 {editingId ? <><Edit2 className="text-orange-500"/> Editando Apontamento</> : <><Plus className="text-blue-500"/> Novo Apontamento</>}
             </h4>
             
             <div className="grid md:grid-cols-12 gap-5 mb-4">
                <div className="md:col-span-4">
                   <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Profissional *</label>
-                  <select className="input-form pl-2 w-full" value={novoApontamento.tecnico_id} onChange={e => setNovoApontamento({...novoApontamento, tecnico_id: e.target.value})}>
+                  <select className="input-form pl-2 w-full font-bold" value={novoApontamento.tecnico_id} onChange={e => setNovoApontamento({...novoApontamento, tecnico_id: e.target.value})}>
                      <option value="">Selecione o profissional...</option>
                      {equipeCompleta.length > 0 ? (
                          equipeCompleta.map(t => (
                              <option key={t.id} value={t.id}>
-                                {t.nome} {t.cargo ? `- ${t.cargo}` : ''}
+                                {t.nome} {t.funcao || t.cargo ? `- ${t.funcao || t.cargo}` : ''}
                              </option>
                          ))
                      ) : (
@@ -287,7 +297,7 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
         {loadingList ? (
             <div className="text-center py-10 text-slate-400 flex flex-col items-center gap-2"><Loader2 className="animate-spin" /> Carregando...</div>
         ) : apontamentos.length === 0 ? (
-            <div className="text-center py-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-slate-400">Nenhum registro.</div>
+            <div className="text-center py-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-slate-400">Nenhum registro de tempo.</div>
         ) : (
             apontamentos.map(apt => {
                 const inicio = new Date(apt.data_inicio);
@@ -297,22 +307,22 @@ export function ApontamentosTab({ osId, tecnicos, status, showToast, onUpdate }:
                 const duracaoM = !isNaN(diffMs) ? Math.floor((diffMs % 3600000) / 60000) : 0;
 
                 return (
-                  <div key={apt.id} className={`bg-white dark:bg-slate-800 border p-4 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:shadow-md transition gap-4 group ${editingId === apt.id ? 'border-orange-400 ring-1 ring-orange-100' : 'border-slate-200 dark:border-slate-700'}`}>
+                  <div key={apt.id} className={`bg-white border p-4 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-sm hover:shadow-md transition gap-4 group ${editingId === apt.id ? 'border-orange-400 ring-1 ring-orange-100' : 'border-slate-200'}`}>
                       <div className="flex-1 w-full">
                         <div className="flex items-center gap-3 mb-2">
                            <span className={`p-1.5 rounded-lg ${apt.tipo === 'Mão de Obra' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{getIconByType(apt.tipo)}</span>
-                           <span className="font-bold text-slate-700 dark:text-white text-sm uppercase">{apt.tecnico_nome}</span>
+                           <span className="font-black text-slate-700 text-sm uppercase">{apt.tecnico_nome}</span>
                            <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-500 px-2 py-0.5 rounded border">{apt.tipo}</span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 ml-1">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 ml-1 font-medium">
                            <span>{inicio.toLocaleString()}</span> <span>➜</span> <span>{fim.toLocaleString()}</span>
                         </div>
-                        <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 pl-2 border-l-2 border-slate-200">{apt.descricao}</p>
+                        <p className="text-sm text-slate-600 mt-2 pl-2 border-l-2 border-slate-200">{apt.descricao}</p>
                       </div>
                       <div className="flex items-center gap-6 min-w-max">
                         <div className="text-right">
                             <span className="block text-[10px] uppercase font-bold text-slate-400">Duração</span>
-                            <span className="text-xl font-black text-slate-800 dark:text-white">{duracaoH}h {duracaoM}m</span>
+                            <span className="text-xl font-black text-slate-800">{duracaoH}h {duracaoM}m</span>
                         </div>
                         {!isReadOnly && (
                             <>

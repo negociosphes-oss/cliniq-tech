@@ -13,11 +13,13 @@ export function FinanceiroPage() {
   const [receitas, setReceitas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+
   // Filtros
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('TODOS');
   const [filtroCentroCusto, setFiltroCentroCusto] = useState('TODOS');
-  const [filtroCategoria, setFiltroCategoria] = useState('TODOS'); // Novo filtro
+  const [filtroCategoria, setFiltroCategoria] = useState('TODOS');
   const [dataInicio, setDataInicio] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [dataFim, setDataFim] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   
@@ -27,13 +29,40 @@ export function FinanceiroPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
-  useEffect(() => { fetchFinanceiro(); }, []);
+  // 🚀 1. MOTOR FAREJADOR
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        let slug = hostname.split('.')[0];
+        
+        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+            slug = 'atlasum';
+        }
 
-  const fetchFinanceiro = async () => {
+        const { data: tenant } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+        const tId = tenant ? tenant.id : 1;
+        setTenantId(tId);
+        fetchFinanceiro(tId);
+      } catch (err) {
+        console.error("Erro ao identificar inquilino:", err);
+      }
+    };
+    initTenant();
+  }, []);
+
+  // 🚀 2. FECHADURA NO FLUXO DE CAIXA
+  const fetchFinanceiro = async (tId: number) => {
     setLoading(true);
     const { data, error } = await supabase
       .from('financeiro_receitas')
-      .select('*, clientes(nome_fantasia)');
+      .select('*, clientes(nome_fantasia)')
+      .eq('tenant_id', tId); // Trava de Segurança
       
     if (error) console.error("Erro:", error);
     else setReceitas(data || []);
@@ -51,16 +80,25 @@ export function FinanceiroPage() {
       return sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-emerald-600 ml-1" /> : <ArrowDown size={14} className="text-emerald-600 ml-1" />;
   };
 
+  // 🚀 3. TRAVAS DE AÇÃO (PAGAMENTO E EXCLUSÃO)
   const confirmarRecebimento = async (id: number) => {
       if(!confirm("Confirmar entrada do valor?")) return;
-      await supabase.from('financeiro_receitas').update({ status: 'PAGO', data_pagamento: new Date().toISOString().split('T')[0] }).eq('id', id);
-      fetchFinanceiro();
+      await supabase
+        .from('financeiro_receitas')
+        .update({ status: 'PAGO', data_pagamento: new Date().toISOString().split('T')[0] })
+        .eq('id', id)
+        .eq('tenant_id', tenantId); // Trava extra
+      fetchFinanceiro(tenantId);
   };
 
   const excluirLancamento = async (id: number) => {
       if(!confirm("Excluir este lançamento?")) return;
-      await supabase.from('financeiro_receitas').delete().eq('id', id);
-      fetchFinanceiro();
+      await supabase
+        .from('financeiro_receitas')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId); // Trava extra
+      fetchFinanceiro(tenantId);
   }
 
   const handleNovo = () => { setEditId(null); setIsModalOpen(true); };
@@ -278,7 +316,14 @@ export function FinanceiroPage() {
         </div>
       </div>
 
-      <FinanceiroFormModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={fetchFinanceiro} editId={editId} />
+      {/* 🚀 4. PASSAGEM DO INQUILINO PARA O MODAL */}
+      <FinanceiroFormModal 
+         isOpen={isModalOpen} 
+         onClose={() => setIsModalOpen(false)} 
+         onSuccess={() => fetchFinanceiro(tenantId)} 
+         editId={editId} 
+         tenantId={tenantId} 
+      />
     </div>
   );
 }

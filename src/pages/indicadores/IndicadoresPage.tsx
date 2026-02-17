@@ -9,19 +9,47 @@ import { KpiCard } from '../../components/KpiCard';
 export function IndicadoresPage() {
   const [indicadores, setIndicadores] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
 
   useEffect(() => {
-      const loadBiData = async () => {
+      // 🚀 1. MOTOR FAREJADOR DE INQUILINO
+      const initTenant = async () => {
+          try {
+              const hostname = window.location.hostname;
+              let slug = hostname.split('.')[0];
+              
+              if (slug === 'localhost' || slug === 'app' || slug === 'www') {
+                  slug = 'atlasum';
+              }
+
+              const { data: tenant } = await supabase
+                  .from('empresas_inquilinas')
+                  .select('id')
+                  .eq('slug_subdominio', slug)
+                  .maybeSingle();
+
+              const tId = tenant ? tenant.id : 1;
+              setTenantId(tId);
+              loadBiData(tId);
+          } catch (err) {
+              console.error("Erro ao identificar inquilino:", err);
+          }
+      };
+
+      // 🚀 2. FECHADURA DE BUSCA DO MOTOR BI
+      const loadBiData = async (tId: number) => {
           setLoading(true);
-          // Busca todas as ordens para calcular histórico
-          const { data: ordens } = await supabase.from('ordens_servico').select('*, equipamentos(nome)');
+          // Busca APENAS as ordens deste Inquilino
+          const { data: ordens } = await supabase
+              .from('ordens_servico')
+              .select('*, equipamentos(nome)')
+              .eq('tenant_id', tId); // 🔒 A TRAVA DE SEGURANÇA
           
           if (ordens) {
-              // Usa o Serviço de Inteligência para calcular
+              // Usa o Serviço de Inteligência para calcular baseado apenas na amostra correta
               const calculated = BiService.calcularIndicadores(ordens);
               
-              // Prepara dados para os gráficos (Mock de exemplo para visualização)
-              // Num cenário real, BiService agruparia isso por mês
+              // Prepara dados para os gráficos
               const chartStatus = [
                   { name: 'Concluídas', value: calculated?.concluidas || 0, color: '#10b981' },
                   { name: 'Pendentes', value: calculated?.pendentes || 0, color: '#f59e0b' },
@@ -30,14 +58,15 @@ export function IndicadoresPage() {
               const chartCustos = [
                   { name: 'Jan', custo: 1200 }, { name: 'Fev', custo: 1900 },
                   { name: 'Mar', custo: 1500 }, { name: 'Abr', custo: 2100 },
-                  { name: 'Mai', custo: calculated?.custoTotal || 2500 }, // Ponto atual
+                  { name: 'Mai', custo: calculated?.custoTotal || 2500 }, // Ponto atual real
               ];
 
               setIndicadores({ ...calculated, chartStatus, chartCustos });
           }
           setLoading(false);
       };
-      loadBiData();
+
+      initTenant();
   }, []);
 
   if(loading) return <div className="p-10 flex justify-center text-slate-500 font-bold">Carregando Inteligência de Dados...</div>;
@@ -56,7 +85,7 @@ export function IndicadoresPage() {
             </div>
         </div>
 
-        {/* CARDS DE TOPO (Usando KpiCard) */}
+        {/* CARDS DE TOPO */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <KpiCard label="MTTR (Médio)" value={indicadores.mttr} icon={Clock} color="blue" subtext="Tempo Médio de Reparo" />
             <KpiCard label="MTBF (Estimado)" value={indicadores.mtbf} icon={AlertTriangle} color="violet" subtext="Tempo Entre Falhas" />
