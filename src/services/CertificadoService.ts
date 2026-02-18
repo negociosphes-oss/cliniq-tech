@@ -11,6 +11,7 @@ const formatDate = (date: any) => {
 
 const resolveStorageUrl = (path: any, folder: string = 'assinaturas') => {
     if (!path || typeof path !== 'string') return null;
+    if (path.startsWith('data:image')) return path; // 🚀 Aceita a assinatura em base64 diretamente
     if (path.startsWith('http')) return path;
     return `https://dnimxqxgtvltgvrrabur.supabase.co/storage/v1/object/public/os-imagens/${folder}/${path}`;
 };
@@ -42,10 +43,12 @@ export const CertificadoService = {
           clienteData = cli || {};
       }
 
-      const { data: exec } = await supabase.from('os_metrologia_execucoes')
-        .select('*, responsavel:id_tecnico_responsavel(*), executor:id_tecnico_executor(*)')
+      // 🚀 CORREÇÃO DO ERRO 400: Busca com mapeamento explícito para a equipe_tecnica
+      const { data: exec, error: errExec } = await supabase.from('os_metrologia_execucoes')
+        .select('*, responsavel:equipe_tecnica!id_tecnico_responsavel(*), executor:equipe_tecnica!id_tecnico_executor(*)')
         .eq('ordem_servico_id', osId).order('created_at', { ascending: false }).limit(1).maybeSingle();
 
+      if (errExec) throw new Error(`Erro ao buscar dados técnicos: ${errExec.message}`);
       if (!exec) throw new Error('Calibração não finalizada. Salve os dados técnicos antes de gerar o laudo.');
 
       const { data: config } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
@@ -62,8 +65,9 @@ export const CertificadoService = {
 
       let statusMatematico = 'PENDENTE';
       if (itens && itens.length > 0) {
-          const temAlgumaLeitura = itens.some((i: any) => i.valor_lido !== null && i.valor_lido !== '');
-          const equipamentoComFalha = itens.some((i: any) => i.conforme === false || String(i.conforme).toLowerCase() === 'false');
+          // 🚀 Ajustado para os nomes novos do banco
+          const temAlgumaLeitura = itens.some((i: any) => i.valor_medido !== null && i.valor_medido !== '');
+          const equipamentoComFalha = itens.some((i: any) => i.resultado === 'REPROVADO');
           
           if (padroesReais.length === 0) {
               statusMatematico = 'REPROVADO';
@@ -75,7 +79,8 @@ export const CertificadoService = {
       }
 
       const statusFinal = statusMatematico;
-      const dataEmissao = new Date(exec.data_calibracao || new Date());
+      // 🚀 Ajustado para pegar a data_conclusao da nova arquitetura
+      const dataEmissao = new Date(exec.data_conclusao || exec.created_at || new Date());
       const validadeMeses = equipData.periodicidade || 12; 
       const dataVencimento = addMonths(dataEmissao, validadeMeses);
       
@@ -100,7 +105,7 @@ export const CertificadoService = {
             cnpj: safeText(config?.cnpj),
             endereco: safeText(config?.endereco_completo),
             contato: safeText(config?.telefone || config?.email),
-            logo: config?.logo_url || config?.logotipo_url // Pega URL direta
+            logo: config?.logo_url || config?.logotipo_url
         },
 
         cliente: {
@@ -119,11 +124,10 @@ export const CertificadoService = {
         },
 
         ambiente: {
-            temp: safeText(exec.temperatura),
-            umid: safeText(exec.umidade)
+            temp: safeText(exec.temperatura, '22'),
+            umid: safeText(exec.umidade, '55')
         },
 
-        // 🚀 AQUI ESTÁ A MÁGICA DOS PADRÕES (Layout do seu Exemplo)
         padroes: padroesReais.map((item: any, index: number) => ({
             index: index + 1,
             nome: safeText(item.nome),
@@ -133,18 +137,18 @@ export const CertificadoService = {
             emissao: formatDate(item.data_calibracao),
             validade: formatDate(item.data_vencimento),
             certificado: safeText(item.n_certificado, '-'),
-            // Fallback robusto caso não tenha a coluna rastreabilidade específica
             rastreabilidade: safeText(item.rastreabilidade || item.dados_rastreabilidade || item.observacoes || `PADRÕES UTILIZADOS COM RASTREABILIDADE RBC/INMETRO. CERTIFICADO ORIGEM: ${safeText(item.n_certificado)} - VALIDADE: ${formatDate(item.data_vencimento)}`, '-')
         })),
 
+        // 🚀 Mapeamento exato das colunas novas da arquitetura
         resultados: (itens || []).map((i: any) => ({
             teste: safeText(i.descricao_teste),
             unidade: safeText(i.unidade),
-            ref: safeText(i.valor_referencia_snapshot),
-            lido: safeText(i.valor_lido),
-            erro: Number(i.erro_encontrado || 0).toFixed(2),
+            ref: safeText(i.valor_referencia_numeric),
+            lido: safeText(i.valor_medido),
+            erro: Number((i.valor_medido || 0) - (i.valor_referencia_numeric || 0)).toFixed(2),
             incerteza: `k=${safeText(i.incerteza_k, '2')}`,
-            status: (i.conforme === true || String(i.conforme).toLowerCase() === 'true') ? 'OK' : 'NOK'
+            status: (i.resultado === 'APROVADO') ? 'OK' : 'NOK'
         })),
 
         assinaturas: {
@@ -160,8 +164,8 @@ export const CertificadoService = {
         notas_tecnicas: {
             metodologia: "Calibração realizada por COMPARAÇÃO DIRETA com padrões rastreáveis ao SI/Inmetro.",
             incerteza: "A Incerteza Expandida relatada baseia-se em uma incerteza padrão combinada multiplicada por um fator de abrangência k=2 (95%).",
-            condicoes: `Condições ambientais: Temp: ${safeText(exec.temperatura)}°C / Umid: ${safeText(exec.umidade)}%.`,
-            obs: safeText(exec.observacoes_finais, 'Sem observações adicionais.')
+            condicoes: `Condições ambientais: Temp: ${safeText(exec.temperatura, '22')}°C / Umid: ${safeText(exec.umidade, '55')}%.`,
+            obs: safeText(exec.observacoes_gerais, 'Sem observações adicionais.')
         }
       };
 

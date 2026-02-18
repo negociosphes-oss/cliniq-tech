@@ -2,7 +2,8 @@ import React from 'react';
 import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
-  page: { flexDirection: 'column', backgroundColor: '#FFFFFF', padding: 30, fontFamily: 'Helvetica', fontSize: 8, color: '#1e293b' },
+  // 🚀 Ajustado o paddingBottom para proteger o rodapé e evitar que a assinatura atropele a frase
+  page: { flexDirection: 'column', backgroundColor: '#FFFFFF', paddingTop: 30, paddingLeft: 30, paddingRight: 30, paddingBottom: 65, fontFamily: 'Helvetica', fontSize: 8, color: '#1e293b' },
   
   // Header Principal (Azul Marinho)
   headerCard: { backgroundColor: '#1e3a8a', borderRadius: 8, padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -42,13 +43,13 @@ const styles = StyleSheet.create({
 
   col1: { width: '30%' }, col2: { width: '10%', textAlign: 'center' }, col3: { width: '15%', textAlign: 'center' }, col5: { width: '15%', textAlign: 'center' }, col6: { width: '15%', textAlign: 'center' }, col7: { width: '15%', textAlign: 'center' },
 
-  // 🚀 NOVO: Estilos da Rastreabilidade (Blocos Empilhados)
+  // Estilos da Rastreabilidade (Blocos Empilhados)
   padraoBlock: { padding: 8, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#ffffff' },
   padraoRow: { flexDirection: 'row', marginBottom: 4, alignItems: 'flex-start' },
-  pLabel: { fontWeight: 'bold', color: '#0f172a', fontSize: 7, marginRight: 4, width: 50 },
+  pLabel: { fontWeight: 'bold', color: '#0f172a', fontSize: 7, marginRight: 4, width: 70 },
   pValue: { color: '#334155', fontSize: 7, flex: 1, textTransform: 'uppercase' },
   pLabelShort: { fontWeight: 'bold', color: '#0f172a', fontSize: 7, marginRight: 4 },
-  pValueShort: { color: '#334155', fontSize: 7, width: 80, textTransform: 'uppercase' },
+  pValueShort: { color: '#334155', fontSize: 7, width: 60, textTransform: 'uppercase' },
 
   // Notas Técnicas e Normativas
   noteTitle: { fontSize: 8, fontWeight: 'bold', color: '#0369a1', marginTop: 8, marginBottom: 2, textTransform: 'uppercase' },
@@ -59,18 +60,21 @@ const styles = StyleSheet.create({
   conclusionText: { fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase', color: '#166534', marginTop: 4 },
 
   // Assinaturas e Rodapé
-  sigs: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 40, pageBreakInside: 'avoid' },
+  sigs: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 30, pageBreakInside: 'avoid' },
   sigBox: { width: '40%', alignItems: 'center' },
   sigLine: { borderTopWidth: 1, borderTopColor: '#64748b', paddingTop: 5, width: '100%', alignItems: 'center' },
-  sigImg: { height: 40, objectFit: 'contain', marginBottom: 2 },
+  sigImg: { height: 45, objectFit: 'contain', marginBottom: 4 },
   sigName: { fontWeight: 'bold', fontSize: 9, color: '#0f172a', textTransform: 'uppercase' },
   sigLabel: { fontSize: 7, color: '#64748b', marginTop: 2, textTransform: 'uppercase' },
 
-  footer: { position: 'absolute', bottom: 30, left: 30, right: 30, textAlign: 'center', fontSize: 7, color: '#94a3b8', borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 10 },
+  // 🚀 Rodapé colado no final da página, distante das assinaturas
+  footer: { position: 'absolute', bottom: 20, left: 30, right: 30, textAlign: 'center', fontSize: 7, color: '#94a3b8', borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8 },
 });
 
+// 🚀 A MÁGICA DA ASSINATURA: O 'encodeURI' quebrava imagens em Base64. Agora ele as ignora e carrega limpo.
 const safeUrl = (url: any) => {
   if (!url || typeof url !== 'string') return undefined;
+  if (url.startsWith('data:image')) return url; // Passa direto pro PDF
   try { return encodeURI(url); } catch { return undefined; }
 };
 
@@ -124,27 +128,25 @@ export const CertificadoUnico = ({ data }: { data: any }) => {
         </View>
       </View>
 
-      {/* 3. RASTREABILIDADE METROLÓGICA (NOVO LAYOUT BLOCO) */}
+      {/* 3. RASTREABILIDADE METROLÓGICA */}
       <View style={styles.section}>
         <Text style={styles.boxHeader}>Rastreabilidade Metrológica (Padrões Utilizados)</Text>
         <View style={{ backgroundColor: '#f8fafc' }}>
             {(data.padroes || []).map((p: any, i: number) => (
               <View key={i} style={[styles.padraoBlock, { backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#f8fafc' }]}>
-                  {/* Linha 1: Nome, TAG e Série */}
                   <View style={styles.padraoRow}>
-                      <Text style={[styles.pLabel, { width: 70 }]}>{p.index} - Padrão:</Text>
+                      <Text style={styles.pLabel}>{p.index} - Padrão:</Text>
                       <Text style={[styles.pValue, { fontWeight: 'bold' }]}>{p.nome}</Text>
                       
                       <Text style={styles.pLabelShort}>TAG:</Text>
-                      <Text style={[styles.pValueShort, { width: 60 }]}>{p.tag}</Text>
+                      <Text style={styles.pValueShort}>{p.tag}</Text>
                       
                       <Text style={styles.pLabelShort}>Série:</Text>
                       <Text style={styles.pValueShort}>{p.serie}</Text>
                   </View>
 
-                  {/* Linha 2: Emissor, Emissão, Validade, Certificado */}
                   <View style={styles.padraoRow}>
-                      <Text style={[styles.pLabel, { width: 70 }]}>Emissor:</Text>
+                      <Text style={styles.pLabel}>Emissor:</Text>
                       <Text style={styles.pValue}>{p.emissor}</Text>
 
                       <Text style={styles.pLabelShort}>Emissão:</Text>
@@ -157,9 +159,8 @@ export const CertificadoUnico = ({ data }: { data: any }) => {
                       <Text style={styles.pValueShort}>{p.certificado}</Text>
                   </View>
 
-                  {/* Linha 3: Texto de Rastreabilidade */}
                   <View style={styles.padraoRow}>
-                      <Text style={[styles.pLabel, { width: 70 }]}>Rastreabilidade:</Text>
+                      <Text style={styles.pLabel}>Rastreabilidade:</Text>
                       <Text style={styles.pValue}>{p.rastreabilidade}</Text>
                   </View>
               </View>
@@ -167,7 +168,7 @@ export const CertificadoUnico = ({ data }: { data: any }) => {
         </View>
       </View>
 
-      {/* 5. RESULTADOS DE MEDIÇÃO (ANÁLISE DE ERRO) */}
+      {/* 5. RESULTADOS DE MEDIÇÃO */}
       <View style={styles.section}>
         <Text style={styles.boxHeader}>Resultados da Calibração</Text>
         <View style={styles.table}>
@@ -217,25 +218,25 @@ export const CertificadoUnico = ({ data }: { data: any }) => {
         </View>
       </View>
 
-      {/* 6. CONFORMIDADE E VALIDADE */}
+      {/* 🚀 6. CONFORMIDADE E VALIDADE RESTRUTURADA CONFORME SOLICITADO */}
       <View style={[styles.conclusionBox, { borderColor: data.status === 'REPROVADO' ? '#dc2626' : '#22c55e', backgroundColor: data.status === 'REPROVADO' ? '#fef2f2' : '#f0fdf4' }]} wrap={false}>
         <Text style={{ fontSize: 8, marginBottom: 4, color: '#334155' }}>PARECER TÉCNICO FINAL E CONFORMIDADE</Text>
         <Text style={[styles.conclusionText, { color: data.status === 'REPROVADO' ? '#dc2626' : '#16a34a' }]}>
-          {data.status === 'REPROVADO' ? 'REPROVADO - IMPRÓPRIO PARA USO CLINICO' : `APROVADO - VÁLIDO ATÉ ${data.validade}`}
+          {data.status === 'REPROVADO' ? 'REPROVADO - NÃO VÁLIDO' : `APROVADO - VÁLIDO ATÉ ${data.validade}`}
         </Text>
       </View>
 
       {/* 7. ASSINATURAS */}
       <View style={styles.sigs} wrap={false}>
          <View style={styles.sigBox}>
-            {urlExecutor ? <Image src={urlExecutor} style={styles.sigImg} /> : <View style={{height: 40}}/>}
+            {urlExecutor ? <Image src={urlExecutor} style={styles.sigImg} /> : <View style={{height: 45}}/>}
             <View style={styles.sigLine}>
               <Text style={styles.sigName}>{data.assinaturas?.executor || 'Executor'}</Text>
               <Text style={styles.sigLabel}>Técnico Responsável</Text>
             </View>
          </View>
          <View style={styles.sigBox}>
-            {urlResponsavel ? <Image src={urlResponsavel} style={styles.sigImg} /> : <View style={{height: 40}}/>}
+            {urlResponsavel ? <Image src={urlResponsavel} style={styles.sigImg} /> : <View style={{height: 45}}/>}
             <View style={styles.sigLine}>
               <Text style={styles.sigName}>{data.assinaturas?.responsavel || 'Responsável'}</Text>
               <Text style={styles.sigLabel}>Engenheiro Clínico (CREA: {data.assinaturas?.responsavel_reg || '-'})</Text>
@@ -243,6 +244,7 @@ export const CertificadoUnico = ({ data }: { data: any }) => {
          </View>
       </View>
 
+      {/* 🚀 RODAPÉ E FIXO */}
       <View style={styles.footer} fixed>
         <Text>Documento oficial emitido digitalmente pela plataforma ATLAS SYSTEM MEDICAL | Autenticação Única: {data.id_doc}</Text>
       </View>

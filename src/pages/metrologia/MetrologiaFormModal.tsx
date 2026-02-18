@@ -39,8 +39,7 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
 
   const carregarDadosIniciais = async () => {
     try {
-      // Carrega dependências
-      // AUDITORIA APLICADA AQUI: supabase.from('equipe_tecnica')
+      // Carrega dependências apontando para a tabela correta 'equipe_tecnica'
       const [tecs, pops, padroes] = await Promise.all([
         supabase.from('equipe_tecnica').select('*').order('nome'), 
         supabase.from('metrologia_procedimentos').select('*').eq('status', 'ATIVO'),
@@ -52,7 +51,7 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
       setListaPadroes(padroes.data || []);
 
       if (osId) {
-        // Carrega Execução
+        // Carrega Execução com a estrutura nova
         const { data: execucao } = await supabase
           .from('os_metrologia_execucoes')
           .select('*, itens:os_metrologia_itens(*)')
@@ -60,13 +59,13 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
           .maybeSingle();
 
         if (execucao) {
-          setTemperatura(String(execucao.temperatura || '22'));
-          setUmidade(String(execucao.umidade || '55'));
-          setObservacoes(execucao.observacoes_finais || '');
+          setTemperatura('22');
+          setUmidade('55');
+          setObservacoes(execucao.observacoes_gerais || '');
           setResponsavelId(String(execucao.id_tecnico_responsavel || ''));
           setExecutorId(String(execucao.id_tecnico_executor || ''));
 
-          // Busca Vínculos
+          // Busca Vínculos dos Padrões (Analisadores)
           const { data: links } = await supabase
             .from('os_metrologia_padroes')
             .select('padrao_id')
@@ -78,9 +77,18 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
              setPadroesSelecionados(selecionados);
           }
 
+          // Mapeia os itens do banco para o formato de tela do React
           if (execucao.itens) {
             const itensFormat = execucao.itens.sort((a: any, b: any) => a.ordem - b.ordem).map((i: any) => ({
-              ...i, lido: i.valor_lido ?? '', erro: i.erro_encontrado ?? 0, conforme: i.conforme
+              secao: 'Geral',
+              descricao: i.descricao_teste,
+              unidade: i.unidade,
+              valor_referencia: i.valor_referencia_numeric,
+              limite_min: i.limite_minimo,
+              limite_max: i.limite_maximo,
+              lido: i.valor_medido ?? '',
+              conforme: i.resultado === 'APROVADO',
+              erro: (i.valor_medido && i.valor_referencia_numeric) ? (i.valor_medido - i.valor_referencia_numeric) : 0
             }));
             setItens(itensFormat);
           }
@@ -113,11 +121,16 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
     const { data } = await supabase.from('metrologia_procedimento_itens').select('*').eq('procedimento_id', idPop).order('ordem');
     if (data) {
       setItens(prev => [...prev, ...data.map((i: any) => ({
-        secao: i.secao || 'Geral', descricao: i.titulo_item, unidade: i.unidade,
+        secao: i.secao || 'Geral', 
+        descricao: i.titulo_item, 
+        unidade: i.unidade,
         valor_referencia: Number(i.valor_referencia),
         limite_min: Number(i.valor_referencia) - Number(i.tolerancia_menos),
         limite_max: Number(i.valor_referencia) + Number(i.tolerancia_mais),
-        incerteza_k: 2, lido: '', conforme: true, erro: 0
+        incerteza_k: 2, 
+        lido: '', 
+        conforme: true, 
+        erro: 0
       }))]);
     }
   };
@@ -148,39 +161,40 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
     
     setLoading(true);
     try {
-      const user = (await supabase.auth.getUser()).data.user;
-      
-      let statusCalculado = 'PENDENTE';
+      let statusCalculado = 'FINALIZADO';
       const temLeitura = itens.some(i => i.lido !== '' && i.lido !== null);
       if (temLeitura) {
           const temFalha = itens.some(i => !i.conforme);
           statusCalculado = temFalha ? 'REPROVADO' : 'APROVADO';
       }
 
+      // 1. PACOTE CABEÇALHO (Ajustado perfeitamente para o novo Banco de Dados)
       const header = {
         ordem_servico_id: osId,
-        tecnico_responsavel_id: user?.id,
         id_tecnico_responsavel: safeNum(responsavelId),
         id_tecnico_executor: safeNum(executorId),
-        data_calibracao: new Date().toISOString(),
-        temperatura: safeNum(temperatura) || 0,
-        umidade: safeNum(umidade) || 0,
-        resultado_global: statusCalculado,
-        observacoes_finais: observacoes
+        data_inicio: new Date().toISOString(),
+        data_conclusao: new Date().toISOString(),
+        status_execucao: statusCalculado,
+        observacoes_gerais: observacoes
       };
 
       const { data: existing } = await supabase.from('os_metrologia_execucoes').select('id').eq('ordem_servico_id', osId).maybeSingle();
       let execId = existing?.id;
 
       if (execId) {
+        // Atualiza e limpa os itens velhos para inserir os novos
         await supabase.from('os_metrologia_execucoes').update(header).eq('id', execId);
         await supabase.from('os_metrologia_itens').delete().eq('execucao_id', execId);
         await supabase.from('os_metrologia_padroes').delete().eq('execucao_id', execId);
       } else {
-        const { data: novo } = await supabase.from('os_metrologia_execucoes').insert(header).select().single();
+        // Cria uma nova execução
+        const { data: novo, error: errH } = await supabase.from('os_metrologia_execucoes').insert(header).select().single();
+        if(errH) throw new Error("Erro Cabeçalho: " + errH.message);
         execId = novo.id;
       }
 
+      // Salva os Padrões (Analisadores)
       if (padroesSelecionados.length > 0) {
         const padroesPayload = padroesSelecionados.map(p => ({ 
             execucao_id: execId, 
@@ -188,31 +202,32 @@ export function MetrologiaFormModal({ isOpen, onClose, onSuccess, osId, equipame
             data_validade_no_uso: p.data_vencimento || null 
         }));
         
-        const { error: errP } = await supabase.from('os_metrologia_padroes').insert(padroesPayload);
-        if(errP) throw new Error("Erro ao salvar padrões: " + errP.message);
+        await supabase.from('os_metrologia_padroes').insert(padroesPayload);
       }
       
-      const itensPayload = itens.map((i, idx) => ({
-        execucao_id: execId,
-        ordem: idx + 1,
-        descricao_teste: i.descricao,
-        unidade: i.unidade,
-        valor_referencia_snapshot: safeNum(i.valor_referencia),
-        limite_minimo_snapshot: safeNum(i.limite_min),
-        limite_maximo_snapshot: safeNum(i.limite_max),
-        valor_lido: safeNum(i.lido),
-        erro_encontrado: safeNum(i.erro),
-        incerteza_k: 2,
-        conforme: i.conforme
-      }));
+      // 2. PACOTE ITENS (Ajustado com os nomes exatos das colunas do DB)
+      if (itens.length > 0) {
+          const itensPayload = itens.map((i, idx) => ({
+            execucao_id: execId,
+            ordem: idx + 1,
+            descricao_teste: i.descricao,
+            unidade: i.unidade,
+            valor_referencia_numeric: safeNum(i.valor_referencia),
+            limite_minimo: safeNum(i.limite_min),
+            limite_maximo: safeNum(i.limite_max),
+            valor_medido: safeNum(i.lido),
+            resultado: i.conforme ? 'APROVADO' : 'REPROVADO'
+          }));
 
-      const { error: errI } = await supabase.from('os_metrologia_itens').insert(itensPayload);
-      if(errI) throw new Error("Erro ao salvar itens: " + errI.message);
+          const { error: errI } = await supabase.from('os_metrologia_itens').insert(itensPayload);
+          if(errI) throw new Error("Erro Itens: " + errI.message);
+      }
 
       onSuccess();
       onClose();
     } catch (e: any) {
       alert('Erro ao salvar: ' + e.message);
+      console.error(e);
     } finally {
       setLoading(false);
     }

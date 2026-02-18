@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom' 
-import { Menu, X, Loader2, Wrench, AlertTriangle, ShieldCheck, Activity, Cpu } from 'lucide-react'
+import { Menu, X, Loader2, AlertTriangle, ShieldCheck, Activity, Cpu } from 'lucide-react'
 import { supabase } from './supabaseClient'
 
 // --- SERVIÇOS ---
@@ -10,7 +10,7 @@ import { ThemeService } from './services/ThemeService'
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './pages/ordem-servico/components/ErrorBoundary'
 
-// --- PÁGINAS ---
+// --- PÁGINAS DO SISTEMA ---
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { IndicadoresPage } from './pages/indicadores/IndicadoresPage'
 import { BibliotecaPage } from './pages/biblioteca/BibliotecaPage'
@@ -27,7 +27,10 @@ import { OrcamentosPage } from './pages/vendas/OrcamentosPage'
 import { FinanceiroPage } from './pages/financeiro/FinanceiroPage'
 import { ChecklistPage } from './pages/checklists/ChecklistPage'
 import { MetrologiaPage } from './pages/metrologia/MetrologiaPage' 
-import { AdminGeralPage } from './pages/admin-geral/AdminGeralPage' // <-- IMPORT ADICIONADO
+import { AdminGeralPage } from './pages/admin-geral/AdminGeralPage'
+
+// 🚀 NOVA PÁGINA: VITRINE DE VENDAS
+import { LandingPage } from './pages/landing/LandingPage'
 
 import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, Manual, OrdemServico, LogAuditoria } from './types'
 
@@ -38,7 +41,7 @@ const getSubdomain = () => {
     if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
         return parts[0];
     }
-    return 'admin'; 
+    return 'atlasum-sistema'; // <--- PROBLEMA RESOLVIDO
 };
 
 function Toast({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info', onClose: () => void }) {
@@ -85,10 +88,8 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 font-sans">
       
-      {/* LADO ESQUERDO: BRANDING (Oculto em celulares) */}
+      {/* LADO ESQUERDO: BRANDING */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16" style={{ backgroundColor: primaryColor }}>
-         
-         {/* Formas Abstratas ao fundo */}
          <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-white/10 rounded-full blur-[100px]"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-black/20 rounded-full blur-[120px]"></div>
          <div className="absolute top-[40%] right-[-5%] w-64 h-64 bg-blue-400/20 rounded-full blur-[80px]"></div>
@@ -117,13 +118,11 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
 
       {/* LADO DIREITO: FORMULÁRIO DE LOGIN */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white relative overflow-hidden">
-         {/* Bolha sutil no fundo para mobile */}
          <div className="absolute top-0 right-0 w-full h-64 bg-gradient-to-b from-slate-100 to-transparent lg:hidden"></div>
 
          <div className="w-full max-w-md animate-fadeIn relative z-10">
              
              <div className="text-center mb-10">
-                 {/* A LOGO MAJESTOSA AQUI */}
                  <div className="flex justify-center mb-8">
                      {tenant.logo_url ? (
                          <div className="h-28 flex items-center justify-center p-2">
@@ -354,10 +353,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                     <Route path="/metrologia" element={<MetrologiaPage />} />
                     <Route path="/checklists" element={<ChecklistPage />} />
                     <Route path="/configuracoes" element={<AdminPage />} />
-                    
-                    {/* 🚀 ROTA ADICIONADA: Torre de Controle SaaS */}
                     <Route path="/admin-geral" element={<AdminGeralPage />} />
-                    
                     <Route path="*" element={<div className="p-10 text-center text-theme-muted">Página não encontrada (404)</div>} />
                 </Routes>
             </ErrorBoundary>
@@ -431,10 +427,18 @@ export default function App() {
         );
     }
 
+    // 🚀 AQUI A MÁGICA ACONTECE: Roteamento Inteligente
     return (
         <ErrorBoundary>
             <Routes>
-                <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => setUser(null)} /> : <Login tenant={tenant} onLoginSuccess={(u) => setUser(u)} /> } />
+                {/* 1. Landing Page na raiz (se não estiver logado) */}
+                <Route path="/" element={user ? <Navigate to="/painel" replace /> : <LandingPage />} />
+                
+                {/* 2. Tela de Login Exclusiva */}
+                <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => setUser(u)} />} />
+                
+                {/* 3. Todo o resto do sistema (Rotas Privadas) */}
+                <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => setUser(null)} /> : <Navigate to="/login" replace /> } />
             </Routes>
         </ErrorBoundary>
     )
