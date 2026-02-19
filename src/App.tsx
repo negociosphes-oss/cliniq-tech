@@ -34,14 +34,22 @@ import { LandingPage } from './pages/landing/LandingPage'
 
 import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, Manual, OrdemServico, LogAuditoria } from './types'
 
-// 🚀 FAREJADOR DE SUBDOMÍNIO
+/// 🚀 FAREJADOR DE SUBDOMÍNIO (Ajustado para Domínio Próprio)
 const getSubdomain = () => {
     const hostname = window.location.hostname;
+    
+    // 1. REGRA DE OURO: Se for o domínio oficial (com ou sem www), força o ID correto
+    if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') {
+        return 'atlasum-sistema'; // Esse é o nome que está gravado no seu banco de dados
+    }
+
+    // 2. Regra antiga para subdomínios (mantida por segurança)
     const parts = hostname.split('.');
     if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
         return parts[0];
     }
-    return 'atlasum-sistema'; // <--- PROBLEMA RESOLVIDO
+    
+    return 'atlasum-sistema'; 
 };
 
 function Toast({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info', onClose: () => void }) {
