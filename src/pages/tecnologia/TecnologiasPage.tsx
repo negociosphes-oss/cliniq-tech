@@ -1,13 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Server, Edit3, Trash2, CheckCircle, XCircle, FileSpreadsheet, Download, Cpu, Factory, FileText, Save, X, Loader2 } from 'lucide-react';import { supabase } from '../../supabaseClient';
+import { Plus, Search, Server, Edit3, Trash2, CheckCircle, FileSpreadsheet, Download, Cpu, Factory, X, Loader2 } from 'lucide-react';
+import { supabase } from '../../supabaseClient';
 import * as XLSX from 'xlsx';
+
+// 🚀 FAREJADOR DE SUBDOMÍNIO PADRÃO ENTERPRISE
+const getSubdomain = () => {
+  const hostname = window.location.hostname;
+  const parts = hostname.split('.');
+  if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
+      return parts[0];
+  }
+  return 'admin'; 
+};
 
 export function TecnologiasPage() {
   const [loading, setLoading] = useState(true);
   const [tecnologias, setTecnologias] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
   
-  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+  const [tenantId, setTenantId] = useState<number | null>(null); // 🚀 Blindado
   
   // Modal e Edição
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,28 +36,33 @@ export function TecnologiasPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🚀 1. MOTOR FAREJADOR
+  // 🚀 1. MOTOR FAREJADOR (IGUAL AO DA EQUIPE TÉCNICA)
   useEffect(() => {
     const initTenant = async () => {
-      try {
-        const hostname = window.location.hostname;
-        let slug = hostname.split('.')[0];
-        
-        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
-            slug = 'atlasum';
-        }
+      const slug = getSubdomain();
+      
+      let { data } = await supabase
+        .from('empresas_inquilinas')
+        .select('id')
+        .eq('slug_subdominio', slug)
+        .maybeSingle();
 
-        const { data: tenant } = await supabase
+      if (!data) {
+          const { data: fallbackData } = await supabase
             .from('empresas_inquilinas')
             .select('id')
-            .eq('slug_subdominio', slug)
+            .order('id', { ascending: true })
+            .limit(1)
             .maybeSingle();
+          data = fallbackData;
+      }
 
-        const tId = tenant ? tenant.id : 1;
-        setTenantId(tId);
-        fetchTecnologias(tId);
-      } catch (err) {
-        console.error("Erro ao identificar inquilino:", err);
+      if (data) {
+          setTenantId(data.id);
+          fetchTecnologias(data.id);
+      } else {
+          setTenantId(-1);
+          setLoading(false);
       }
     };
     initTenant();
@@ -54,20 +70,29 @@ export function TecnologiasPage() {
 
   // 🚀 2. FECHADURA DE LEITURA
   const fetchTecnologias = async (tId: number) => {
+    if (tId === -1) return;
     setLoading(true);
-    const { data, error } = await supabase
-        .from('tecnologias')
-        .select('*')
-        .eq('tenant_id', tId) // Trava de Segurança
-        .order('nome');
-    if (!error) setTecnologias(data || []);
-    setLoading(false);
+    try {
+        const { data, error } = await supabase
+            .from('tecnologias')
+            .select('*')
+            .eq('tenant_id', tId) // Trava de Segurança
+            .order('nome');
+        
+        if (error) throw error;
+        setTecnologias(data || []);
+    } catch (error: any) {
+        console.error("Erro ao buscar tecnologias:", error.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
   // 🚀 3. CARIMBO DE AUTORIA NO SALVAMENTO MANUAL
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formData.nome || !formData.fabricante || !formData.modelo) return alert('Preencha os campos obrigatórios (*).');
+    if (!tenantId || tenantId === -1) return alert('Erro de segurança: Inquilino não identificado.');
 
     try {
       // Injeta o tenant_id silenciosamente
@@ -87,15 +112,21 @@ export function TecnologiasPage() {
 
   // 🚀 4. TRAVA DE EXCLUSÃO (HACKER-PROOF)
   const handleDelete = async (id: number) => {
+    if (!tenantId || tenantId === -1) return;
     if (!confirm('ATENÇÃO: Excluir este modelo pode afetar equipamentos vinculados. Continuar?')) return;
-    const { error } = await supabase
-        .from('tecnologias')
-        .delete()
-        .eq('id', id)
-        .eq('tenant_id', tenantId); // Trava
-        
-    if (error) alert('Erro ao excluir. Verifique vínculos.');
-    else fetchTecnologias(tenantId);
+    
+    try {
+        const { error } = await supabase
+            .from('tecnologias')
+            .delete()
+            .eq('id', id)
+            .eq('tenant_id', tenantId); // Trava
+            
+        if (error) throw error;
+        fetchTecnologias(tenantId);
+    } catch (error: any) {
+        alert('Erro ao excluir. Verifique vínculos: ' + error.message);
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -111,6 +142,7 @@ export function TecnologiasPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!tenantId || tenantId === -1) return alert('Erro de segurança: Inquilino não identificado.');
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -139,7 +171,7 @@ export function TecnologiasPage() {
         alert(`${payload.length} modelos importados com sucesso!`);
         fetchTecnologias(tenantId);
       } catch (error) {
-        alert('Erro na importação.');
+        alert('Erro na importação. Verifique o formato do Excel.');
       } finally {
         if(fileInputRef.current) fileInputRef.current.value = '';
       }
@@ -167,10 +199,12 @@ export function TecnologiasPage() {
   };
 
   const filteredList = tecnologias.filter(t => 
-    t.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    t.nome?.toLowerCase().includes(busca.toLowerCase()) ||
     t.modelo?.toLowerCase().includes(busca.toLowerCase()) ||
     t.fabricante?.toLowerCase().includes(busca.toLowerCase())
   );
+
+  if (!tenantId) return <div className="p-8 text-center flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>;
 
   return (
     <div className="p-8 animate-fadeIn max-w-7xl mx-auto pb-24">
@@ -217,7 +251,7 @@ export function TecnologiasPage() {
          {loading ? (
            <div className="col-span-full py-12 flex justify-center text-indigo-500"><Loader2 className="animate-spin" size={32}/></div>
          ) : filteredList.length === 0 ? (
-           <div className="col-span-full py-12 text-center text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-3xl">Nenhum modelo cadastrado.</div>
+           <div className="col-span-full py-12 text-center text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">Nenhum modelo cadastrado para esta unidade.</div>
          ) : filteredList.map(item => (
             <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative">
                

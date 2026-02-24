@@ -15,6 +15,7 @@ const getSubdomain = () => {
 export function ConfigGeral() {
   const [config, setConfig] = useState({ 
       nome_fantasia: '', 
+      nome_empresa: '', // 🚀 NOVO: Razão Social exclusiva para o PDF
       cnpj: '', 
       telefone: '', 
       email: '', 
@@ -29,17 +30,22 @@ export function ConfigGeral() {
   const fetchConfig = async () => {
     const slug = getSubdomain();
     
-    // 🚀 Busca os dados do Inquilino atual no banco SaaS
-    const { data } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
+    // 🚀 Busca dados mesclando as duas tabelas para não perder nenhuma informação
+    const { data: tenantData } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
+    const { data: confData } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
     
-    if (data) {
+    // Junta as duas. A configuracoes_empresa tem prioridade por ter a Razão Social
+    const finalData = { ...tenantData, ...confData };
+    
+    if (finalData) {
         setConfig({
-            nome_fantasia: data.nome_fantasia || '', 
-            cnpj: data.cnpj || '',
-            telefone: data.telefone || '',
-            email: data.email || '',
-            endereco_completo: data.endereco_completo || '',
-            logo_url: data.logo_url || ''
+            nome_fantasia: finalData.nome_fantasia || '', 
+            nome_empresa: finalData.nome_empresa || finalData.nome_fantasia || '', // Puxa a Razão Social
+            cnpj: finalData.cnpj || '',
+            telefone: finalData.telefone || '',
+            email: finalData.email || '',
+            endereco_completo: finalData.endereco_completo || '',
+            logo_url: finalData.logo_url || ''
         });
     }
   };
@@ -49,8 +55,8 @@ export function ConfigGeral() {
     const slug = getSubdomain();
 
     try {
-        // 🚀 Atualiza exclusivamente a empresa logada no subdomínio
-        const { error } = await supabase.from('empresas_inquilinas').update({ 
+        // 🚀 AÇÃO 1: Atualiza a tabela do Inquilino (Garante que a Logo do Menu e do Login atualizem)
+        await supabase.from('empresas_inquilinas').update({ 
             nome_fantasia: config.nome_fantasia, 
             cnpj: config.cnpj,
             telefone: config.telefone,
@@ -59,7 +65,20 @@ export function ConfigGeral() {
             logo_url: config.logo_url
         }).eq('slug_subdominio', slug);
 
+        // 🚀 AÇÃO 2: Salva na configuracoes_empresa (A Tabela OFICIAL que o motor do PDF usa)
+        const { error } = await supabase.from('configuracoes_empresa').upsert({
+            id: 1, // Fixa no ID 1 para ser a empresa mestre
+            nome_fantasia: config.nome_fantasia, 
+            nome_empresa: config.nome_empresa, // Dispara a Razão Social pro PDF
+            cnpj: config.cnpj,
+            telefone: config.telefone,
+            email: config.email,
+            endereco_completo: config.endereco_completo,
+            logo_url: config.logo_url
+        });
+
         if (error) throw error;
+        
         alert('Identidade Visual do ambiente atualizada com sucesso!');
         // Força um recarregamento leve para a Logo aparecer no menu lateral imediatamente
         window.location.reload();
@@ -120,7 +139,9 @@ export function ConfigGeral() {
                     </div>
                     
                     <div className="flex-1 w-full space-y-4">
-                        <Field label="Nome da Empresa (Razão Social / Fantasia)" value={config.nome_fantasia} onChange={(e:any) => setConfig({...config, nome_fantasia: e.target.value})} />
+                        {/* 🚀 O CAMPO DE RAZÃO SOCIAL QUE FALTAVA PARA O PDF */}
+                        <Field label="Nome da Empresa (Razão Social Oficial)" value={config.nome_empresa} onChange={(e:any) => setConfig({...config, nome_empresa: e.target.value})} placeholder="Ex: Atlas System LTDA" />
+                        <Field label="Nome Fantasia" value={config.nome_fantasia} onChange={(e:any) => setConfig({...config, nome_fantasia: e.target.value})} />
                         <Field label="CNPJ" value={config.cnpj} onChange={(e:any) => setConfig({...config, cnpj: e.target.value})} placeholder="00.000.000/0000-00" />
                     </div>
                 </div>
@@ -132,7 +153,7 @@ export function ConfigGeral() {
             <div className="w-full md:w-1/3 bg-slate-50 p-6 border-b md:border-b-0 md:border-r border-slate-200">
                 <h3 className="font-bold text-slate-800 text-base">Contato Institucional</h3>
                 <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                    Informações de contato oficiais que aparecerão nos rodapés dos laudos e comunicações.
+                    Informações de contato oficiais que aparecerão nos cabeçalhos dos laudos e comunicações.
                 </p>
             </div>
             
@@ -157,7 +178,7 @@ export function ConfigGeral() {
   );
 }
 
-// Componente de Input Minimalista
+// Componente de Input Minimalista mantido!
 const Field = ({ label, ...props }: any) => (
     <div className="flex flex-col gap-1.5 w-full">
         <label className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">{label}</label>

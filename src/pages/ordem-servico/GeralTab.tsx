@@ -20,7 +20,7 @@ interface GeralTabProps {
   setOsForm: (value: any) => void;
   tecnicos: Tecnico[];
   status: string;
-  tiposOs?: any[]; // <-- Propriedade nova para receber os tipos de serviço do banco
+  tiposOs?: any[]; // AQUI: Lista dinâmica vinda do banco
 }
 
 export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: GeralTabProps) {
@@ -59,12 +59,12 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="group">
                 <label className="text-xs font-bold uppercase text-slate-500 mb-1.5 block">Nome</label>
-                <input className="input-form w-full bg-slate-100" value={osForm.solicitante_nome || ''} disabled />
+                <input className="input-form w-full bg-slate-100 dark:bg-slate-700/50 text-slate-500" value={osForm.solicitante_nome || ''} disabled />
             </div>
             <div className="group">
                 <label className="text-xs font-bold uppercase text-slate-500 mb-1.5 block flex items-center gap-1"><Phone size={12}/> Telefone / Zap</label>
                 <input 
-                    className="input-form w-full" 
+                    className="input-form w-full border-slate-200 dark:border-slate-700 focus:border-blue-500 bg-transparent" 
                     value={osForm.solicitante_telefone || ''} 
                     onChange={e => handleChange('solicitante_telefone', e.target.value)} 
                     placeholder="Ex: (11) 99999-9999"
@@ -74,7 +74,7 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
             <div className="group">
                 <label className="text-xs font-bold uppercase text-slate-500 mb-1.5 block flex items-center gap-1"><Mail size={12}/> Email</label>
                 <input 
-                    className="input-form w-full" 
+                    className="input-form w-full border-slate-200 dark:border-slate-700 focus:border-blue-500 bg-transparent" 
                     value={osForm.solicitante_email || ''} 
                     onChange={e => handleChange('solicitante_email', e.target.value)} 
                     placeholder="email@cliente.com"
@@ -114,17 +114,17 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
               <List size={12}/> Natureza do Serviço
             </label>
             
-            {/* 🚀 O DROPDOWN AGORA PUXA DO BANCO DE DADOS */}
+            {/* O DROPDOWN AGORA PUXA DO BANCO DE DADOS DINAMICAMENTE */}
             <select 
-              className={`w-full p-3 rounded-lg border bg-slate-50 dark:bg-slate-900 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-bold text-slate-700 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`w-full p-3 rounded-lg border bg-slate-50 dark:bg-slate-900 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-bold text-slate-700 dark:text-slate-200 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
               value={osForm.tipo || ''}
               onChange={(e) => handleChange('tipo', e.target.value)}
               disabled={isReadOnly}
             >
               <option value="">Selecione...</option>
               {tiposOs.length > 0 ? (
-                  tiposOs.map(t => (
-                     <option key={t.id} value={t.nome}>{t.nome}</option>
+                  tiposOs.map((t, idx) => (
+                     <option key={t.id || idx} value={t.nome}>{t.nome}</option>
                   ))
               ) : (
                   // Fallback de segurança se o banco demorar a carregar
@@ -143,7 +143,7 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
             </label>
             <select 
               className={`w-full p-3 rounded-lg border bg-slate-50 dark:bg-slate-900 dark:border-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition font-medium 
-                ${osForm.prioridade === 'Crítica' ? 'text-red-600 bg-red-50 border-red-200' : ''}
+                ${osForm.prioridade === 'Crítica' ? 'text-red-600 bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'text-slate-700 dark:text-slate-200'}
                 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}
               `}
               value={osForm.prioridade || 'Média'}
@@ -159,7 +159,7 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
         </div>
       </section>
 
-      {/* QUEIXA PRINCIPAL EM DESTAQUE E ISOLADA (O fechamento está na FechamentoTab) */}
+      {/* QUEIXA PRINCIPAL */}
       <section className="bg-orange-50/50 dark:bg-orange-900/10 p-6 rounded-xl border border-orange-100 dark:border-orange-800/50 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <div className="p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg">
@@ -167,7 +167,7 @@ export function GeralTab({ osForm, setOsForm, tecnicos, status, tiposOs = [] }: 
           </div>
           <h4 className="text-sm font-bold uppercase text-orange-800 dark:text-orange-400">Solicitação / Queixa Principal</h4>
         </div>
-        <p className="text-slate-700 dark:text-slate-300 italic text-sm md:text-base leading-relaxed pl-4 border-l-2 border-orange-300">
+        <p className="text-slate-700 dark:text-slate-300 italic text-sm md:text-base leading-relaxed pl-4 border-l-2 border-orange-300 dark:border-orange-700">
           "{osForm.descricao || osForm.descricao_problema || 'Nenhum detalhe informado na abertura.'}"
         </p>
       </section>

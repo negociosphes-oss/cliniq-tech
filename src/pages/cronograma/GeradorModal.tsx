@@ -11,9 +11,10 @@ interface GeradorModalProps {
   onGenerated: () => void;
   initialPlanName?: string;
   initialPlanId?: number;
+  tenantId: number; // 🚀 INJETADO PELA PAGE
 }
 
-export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPlanId }: GeradorModalProps) {
+export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPlanId, tenantId }: GeradorModalProps) {
   const [step, setStep] = useState(1); 
   const [loading, setLoading] = useState(false);
   const [loadingEquip, setLoadingEquip] = useState(false);
@@ -45,31 +46,33 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
     gerar_os_auto: true
   });
 
-  // Carga Inicial de Clientes
+  // Carga Inicial de Clientes BLINDADA
   useEffect(() => {
     const fetchClientes = async () => {
-      const { data } = await supabase.from('clientes').select('*').order('nome_fantasia');
+      const { data } = await supabase.from('clientes').select('*').eq('tenant_id', tenantId).order('nome_fantasia');
       if (data) setClientes(data);
     };
-    fetchClientes();
-  }, []);
+    if(tenantId) fetchClientes();
+  }, [tenantId]);
 
-  // BUSCA EQUIPAMENTOS (CORRIGIDA - HIDRATAÇÃO MANUAL)
+  // BUSCA EQUIPAMENTOS BLINDADA E COM HIDRATAÇÃO MANUAL
   useEffect(() => {
-    if (form.cliente_id) {
+    if (form.cliente_id && tenantId) {
       const fetchEquip = async () => {
         setLoadingEquip(true);
         
-        // 1. Busca Equipamentos
+        // 1. Busca Equipamentos daquele cliente e daquele inquilino
         const { data: eqData } = await supabase
           .from('equipamentos')
           .select('*')
-          .eq('cliente_id', form.cliente_id);
+          .eq('cliente_id', form.cliente_id)
+          .eq('tenant_id', tenantId);
         
-        // 2. Busca Tecnologias separadamente
+        // 2. Busca Tecnologias do inquilino
         const { data: tecData } = await supabase
           .from('tecnologias')
-          .select('id, nome');
+          .select('id, nome')
+          .eq('tenant_id', tenantId);
 
         if (eqData) {
             // 3. Cruza os dados
@@ -88,7 +91,7 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
       setEquipamentos([]);
       setSelectedEquipIds([]);
     }
-  }, [form.cliente_id]);
+  }, [form.cliente_id, tenantId]);
 
   // Filtros em Memória
   const equipamentosFiltrados = useMemo(() => {
@@ -116,6 +119,7 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
   const handleGenerate = async () => {
     if (!regras.data_inicio) return alert('Selecione a data de início.');
     if (selectedEquipIds.length === 0) return alert('Selecione pelo menos um equipamento.');
+    if (!tenantId) return alert('Erro de sessão.');
     
     setLoading(true);
     try {
@@ -128,7 +132,8 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
                nome: form.nome_cronograma,
                cliente_id: form.cliente_id,
                descricao: `Gerado em ${new Date().toLocaleDateString()}`,
-               ativo: true
+               ativo: true,
+               tenant_id: tenantId // 🚀 CARIMBO DO INQUILINO
             }])
             .select()
             .single();
@@ -158,7 +163,8 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
                  prioridade: 'Média',
                  descricao: `[AUTO] Plano: ${form.nome_cronograma}.`,
                  solicitante_nome: form.solicitante || 'Sistema',
-                 created_at: new Date().toISOString()
+                 created_at: new Date().toISOString(),
+                 tenant_id: tenantId // 🚀 CARIMBO DO INQUILINO NA OS
              }]).select().single();
              
              if (!errOS && novaOS) {
@@ -177,7 +183,8 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
             observacao: `Resp: ${form.solicitante}`,
             prazo_dias: regras.prazo_dias,
             frequencia: regras.frequencia,
-            os_gerada_id: osGeradaId
+            os_gerada_id: osGeradaId,
+            tenant_id: tenantId // 🚀 CARIMBO DO INQUILINO NA LINHA DO CRONOGRAMA
           });
 
           // Avança Data
@@ -210,7 +217,7 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[2000] p-4">
       <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-fadeIn">
         
         <div className="p-6 border-b dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800 rounded-t-2xl">
@@ -319,11 +326,11 @@ export function GeradorModal({ onClose, onGenerated, initialPlanName, initialPla
         </div>
 
         <div className="p-6 border-t dark:border-slate-800 flex justify-between bg-slate-50 dark:bg-slate-800 rounded-b-2xl">
-           {step > 1 ? <button onClick={() => setStep(step - 1)} className="btn-secondary flex items-center gap-2"><ArrowLeft size={18}/> Voltar</button> : <div></div>}
-           {step < 3 ? <button onClick={() => { if(step === 1 && (!form.nome_cronograma || !form.cliente_id)) return alert('Preencha os campos obrigatórios'); if(step === 2 && selectedEquipIds.length === 0) return alert('Selecione pelo menos um equipamento'); setStep(step + 1); }} className="btn-primary flex items-center gap-2">Próximo <ArrowRight size={18}/></button> : <button onClick={handleGenerate} disabled={loading} className="btn-primary bg-green-600 hover:bg-green-700 flex items-center gap-2 px-8 shadow-lg">{loading ? 'Gerando...' : <><Save size={18}/> CONFIRMAR</>}</button>}
+           {step > 1 ? <button onClick={() => setStep(step - 1)} className="btn-secondary flex items-center gap-2 px-4 py-2 bg-slate-200 rounded-lg hover:bg-slate-300 transition-colors font-bold text-slate-600"><ArrowLeft size={18}/> Voltar</button> : <div></div>}
+           {step < 3 ? <button onClick={() => { if(step === 1 && (!form.nome_cronograma || !form.cliente_id)) return alert('Preencha os campos obrigatórios'); if(step === 2 && selectedEquipIds.length === 0) return alert('Selecione pelo menos um equipamento'); setStep(step + 1); }} className="btn-primary bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg px-6 py-2 transition-colors flex items-center gap-2">Próximo <ArrowRight size={18}/></button> : <button onClick={handleGenerate} disabled={loading} className="btn-primary bg-green-600 hover:bg-green-700 text-white font-bold flex items-center gap-2 px-8 py-2 rounded-lg transition-colors shadow-lg">{loading ? 'Gerando...' : <><Save size={18}/> CONFIRMAR</>}</button>}
         </div>
       </div>
-      <style>{`.label-bold { @apply text-xs font-bold uppercase text-slate-500 block mb-1 }`}</style>
+      <style>{`.label-bold { @apply text-xs font-bold uppercase text-slate-500 block mb-1 } .input-form { @apply w-full border border-slate-200 rounded-lg p-2 outline-none focus:border-blue-500 }`}</style>
     </div>
   )
 }

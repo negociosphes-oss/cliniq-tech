@@ -7,9 +7,10 @@ interface Props {
   onClose: () => void; 
   onSuccess: () => void; 
   editId?: number | null; 
+  tenantId: number; // 🚀 AGORA É OBRIGATÓRIO RECEBER A CHAVE
 }
 
-export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId }: Props) {
+export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId, tenantId }: Props) {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [clientes, setClientes] = useState<any[]>([]);
@@ -28,12 +29,12 @@ export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId }: Props
   const [itens, setItens] = useState([{ descricao: '', quantidade: 1, valor_unitario: 0 }]);
 
   useEffect(() => { 
-    if (isOpen) {
+    if (isOpen && tenantId) {
         fetchClientes();
         if (editId) carregarOrcamento(editId);
         else resetForm();
     }
-  }, [isOpen, editId]);
+  }, [isOpen, editId, tenantId]);
 
   const resetForm = () => {
       setClienteId(''); setValidade(''); setObservacoes('');
@@ -43,8 +44,12 @@ export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId }: Props
   };
 
   const fetchClientes = async () => {
-    // Agora puxa os dados de contato do cliente também para auto-completar
-    const { data } = await supabase.from('clientes').select('id, nome_fantasia, responsavel, email, telefone').order('nome_fantasia');
+    // 🔒 BLINDAGEM: Traz APENAS clientes da empresa atual
+    const { data } = await supabase
+      .from('clientes')
+      .select('id, nome_fantasia, responsavel, email, telefone')
+      .eq('tenant_id', tenantId)
+      .order('nome_fantasia');
     setClientes(data || []);
   };
 
@@ -64,7 +69,8 @@ export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId }: Props
   const carregarOrcamento = async (id: number) => {
       setLoadingData(true);
       try {
-          const { data: orc } = await supabase.from('orçamentos').select('*').eq('id', id).single();
+          // Trava de segurança extra na edição
+          const { data: orc } = await supabase.from('orçamentos').select('*').eq('id', id).eq('tenant_id', tenantId).single();
           const { data: itensOrc } = await supabase.from('orcamento_itens').select('*').eq('orcamento_id', id);
 
           if (orc) {
@@ -97,36 +103,53 @@ export function OrcamentoFormModal({ isOpen, onClose, onSuccess, editId }: Props
   const handleSave = async () => {
     if (!clienteId) return alert("Selecione um cliente.");
     if (itens.some(i => !i.descricao)) return alert("Preencha a descrição dos itens.");
+    if (!tenantId || tenantId === -1) return alert("Erro de segurança: Inquilino inválido.");
     setLoading(true);
 
     try {
+      // 🚀 INJETAMOS O TENANT_ID AQUI!
       const orcamentoPayload = {
-        cliente_id: clienteId, validade: validade || null, valor_total: totalGeral,
-        observacoes, metodo_pagamento: metodoPagamento, prazo_pagamento: prazoPagamento,
-        solicitante, email_contato: emailContato, telefone_contato: telefoneContato
+        tenant_id: tenantId,
+        cliente_id: clienteId, 
+        validade: validade || null, 
+        valor_total: totalGeral,
+        observacoes, 
+        metodo_pagamento: metodoPagamento, 
+        prazo_pagamento: prazoPagamento,
+        solicitante, 
+        email_contato: emailContato, 
+        telefone_contato: telefoneContato
       };
 
       let orcamentoIdFinal = editId;
 
       if (editId) {
-          await supabase.from('orçamentos').update(orcamentoPayload).eq('id', editId);
+          await supabase.from('orçamentos').update(orcamentoPayload).eq('id', editId).eq('tenant_id', tenantId);
           await supabase.from('orcamento_itens').delete().eq('orcamento_id', editId);
       } else {
           const numOrcamento = `ORC-${Date.now().toString().slice(-6)}`;
-          const { data: orc, error: errOrc } = await supabase.from('orçamentos').insert([{ ...orcamentoPayload, numero_orcamento: numOrcamento, status: 'PENDENTE' }]).select().single();
+          const { data: orc, error: errOrc } = await supabase
+            .from('orçamentos')
+            .insert([{ ...orcamentoPayload, numero_orcamento: numOrcamento, status: 'PENDENTE' }])
+            .select()
+            .single();
           if (errOrc) throw errOrc;
           orcamentoIdFinal = orc.id;
       }
 
       const itensPayload = itens.map(item => ({
-        orcamento_id: orcamentoIdFinal, descricao: item.descricao, quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario, valor_total: item.quantidade * item.valor_unitario
+        orcamento_id: orcamentoIdFinal, 
+        descricao: item.descricao, 
+        quantidade: item.quantidade,
+        valor_unitario: item.valor_unitario, 
+        valor_total: item.quantidade * item.valor_unitario
       }));
 
       await supabase.from('orcamento_itens').insert(itensPayload);
 
       alert(editId ? 'Orçamento atualizado!' : 'Orçamento gerado!');
-      onSuccess(); onClose();
+      onSuccess(); 
+      onClose();
     } catch (e: any) { alert(e.message); } finally { setLoading(false); }
   };
 

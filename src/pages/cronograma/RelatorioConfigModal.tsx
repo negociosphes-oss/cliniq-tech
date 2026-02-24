@@ -13,9 +13,10 @@ interface PlanoOption {
 
 interface RelatorioConfigModalProps {
   onClose: () => void;
+  tenantId: number; // 🚀 INJETADO PELA PAGE
 }
 
-export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
+export function RelatorioConfigModal({ onClose, tenantId }: RelatorioConfigModalProps) {
   const [loading, setLoading] = useState(false);
   const [planos, setPlanos] = useState<PlanoOption[]>([]);
   
@@ -27,13 +28,16 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
   const [status, setStatus] = useState('Todos');
   const [orientacao, setOrientacao] = useState<'portrait' | 'landscape'>('portrait');
 
-  // Carrega Planos e Configurações ao abrir
+  // Carrega Planos e Configurações BLINDADO
   useEffect(() => {
     const loadData = async () => {
-      // 1. Carregar Planos
+      if (!tenantId) return;
+
+      // 1. Carregar Planos do Inquilino Atual
       const { data: planosData } = await supabase
         .from('cronograma_planos')
         .select('id, nome, clientes(nome_fantasia)')
+        .eq('tenant_id', tenantId) // 🚀 Trava
         .order('created_at', { ascending: false });
       
       if (planosData) {
@@ -46,16 +50,20 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
 
       // 2. Carregar Configuração da Empresa (Logo)
       const { data: configData } = await supabase
-        .from('configuracoes')
-        .select('nome_empresa, logo_url')
-        .single();
+        .from('configuracoes_empresa') // 🚀 Usando a tabela que você me mostrou no video
+        .select('nome_fantasia, logo_url')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
       
       if (configData) {
-        setConfig(configData);
+        setConfig({
+          nome_empresa: configData.nome_fantasia || 'Atlasum',
+          logo_url: configData.logo_url
+        });
       }
     };
     loadData();
-  }, []);
+  }, [tenantId]);
 
   // Função auxiliar para converter imagem URL em Base64 para o PDF
   const getBase64ImageFromURL = (url: string): Promise<string> => {
@@ -77,9 +85,10 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
   };
 
   const handleGerarPDF = async () => {
+    if (!tenantId) return alert('Erro de sessão');
     setLoading(true);
     try {
-      // 1. Constrói a Query (CORRIGIDA: Sem pedir logo_url de clientes)
+      // 1. Constrói a Query BLINDADA
       let query = supabase
         .from('cronogramas')
         .select(`
@@ -94,6 +103,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
           ),
           cronograma_planos (nome, clientes(nome_fantasia))
         `)
+        .eq('tenant_id', tenantId) // 🚀 Trava Principal
         .order('data_programada', { ascending: true });
 
       // Aplica Filtros
@@ -126,7 +136,6 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
       if (config?.logo_url) {
         try {
            const logoBase64 = await getBase64ImageFromURL(config.logo_url);
-           // Adiciona logo no canto esquerdo (ajuste dimensões conforme necessário)
            doc.addImage(logoBase64, 'PNG', 14, 5, 30, 30);
         } catch (e) {
            console.warn('Não foi possível carregar a logo:', e);
@@ -135,7 +144,6 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(18);
-      // Ajusta posição do texto dependendo se tem logo ou não
       const textX = config?.logo_url ? 50 : 14;
       
       doc.text(empresaNome, textX, 15);
@@ -194,7 +202,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[2000] p-4">
       <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col animate-fadeIn">
         
         {/* Header */}
@@ -212,7 +220,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
                  <FileText size={14}/> Selecione o Plano
               </label>
               <select 
-                 className="input-form w-full p-3 rounded-lg border bg-slate-50 dark:bg-slate-800 dark:border-slate-700"
+                 className="w-full p-3 rounded-lg border bg-slate-50 border-slate-200 outline-none focus:border-blue-500 dark:bg-slate-800 dark:border-slate-700"
                  value={selectedPlanId}
                  onChange={e => setSelectedPlanId(Number(e.target.value))}
               >
@@ -229,7 +237,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
                     <Filter size={14}/> Status
                  </label>
                  <select 
-                    className="input-form w-full p-2"
+                    className="w-full p-3 rounded-lg border bg-slate-50 border-slate-200 outline-none focus:border-blue-500"
                     value={status}
                     onChange={e => setStatus(e.target.value)}
                  >
@@ -244,7 +252,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
                     <Calendar size={14}/> Orientação
                  </label>
                  <select 
-                    className="input-form w-full p-2"
+                    className="w-full p-3 rounded-lg border bg-slate-50 border-slate-200 outline-none focus:border-blue-500"
                     value={orientacao}
                     onChange={e => setOrientacao(e.target.value as any)}
                  >
@@ -269,7 +277,7 @@ export function RelatorioConfigModal({ onClose }: RelatorioConfigModalProps) {
            <button 
               onClick={handleGerarPDF} 
               disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-blue-200 dark:shadow-none flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
            >
               {loading ? 'Gerando...' : <><Download size={18}/> Baixar PDF</>}
            </button>

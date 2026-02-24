@@ -5,12 +5,12 @@ import { EquipeHub } from './EquipeHub';
 
 // 🚀 FAREJADOR DE SUBDOMÍNIO
 const getSubdomain = () => {
-    const hostname = window.location.hostname;
-    const parts = hostname.split('.');
-    if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
-        return parts[0];
-    }
-    return 'admin'; 
+  const hostname = window.location.hostname;
+  const parts = hostname.split('.');
+  if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
+      return parts[0];
+  }
+  return 'admin'; 
 };
 
 export function EquipePage() {
@@ -24,16 +24,40 @@ export function EquipePage() {
   useEffect(() => {
       const init = async () => {
           const slug = getSubdomain();
-          const { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
+          
+          // 1. Tenta buscar a empresa pelo slug da URL
+          let { data } = await supabase
+            .from('empresas_inquilinas')
+            .select('id')
+            .eq('slug_subdominio', slug)
+            .maybeSingle();
+
+          // 2. BLINDAGEM: Se não achar (Ex: estamos no localhost como 'admin'), 
+          // puxa a primeira empresa cadastrada (Master) para não travar a tela.
+          if (!data) {
+              const { data: fallbackData } = await supabase
+                .from('empresas_inquilinas')
+                .select('id')
+                .order('id', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+              data = fallbackData;
+          }
+
           if (data) {
               setTenantId(data.id);
               fetchEquipe(data.id);
+          } else {
+              // Se o banco de empresas estiver totalmente vazio
+              setTenantId(-1); 
+              setLoading(false);
           }
       };
       init();
   }, []);
 
   const fetchEquipe = async (tId: number) => {
+    if (tId === -1) return; // Trava de segurança
     try {
       setLoading(true);
       // 🔒 BLINDAGEM: Traz apenas técnicos desta empresa
@@ -100,7 +124,9 @@ export function EquipePage() {
       {loading ? (
           <div className="text-center py-12"><Loader2 className="animate-spin text-primary-theme mx-auto" size={40}/></div>
       ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-theme-muted font-bold">Nenhum técnico encontrado nesta unidade.</div>
+          <div className="text-center py-12 text-theme-muted font-bold border-2 border-dashed border-theme rounded-xl bg-theme-page/50">
+              Nenhum técnico cadastrado para esta base.
+          </div>
       ) : (
           /* GRID DE CARDS */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

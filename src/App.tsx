@@ -241,7 +241,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
         const [resCli, resTec, resTcn, resMan, resLogs, resUsr] = await Promise.all([
             supabase.from('clientes').select('*').eq('tenant_id', tenant.id),
             supabase.from('tecnologias').select('*'),
-            supabase.from('tecnicos').select('*').eq('tenant_id', tenant.id),
+            supabase.from('equipe_tecnica').select('*').eq('tenant_id', tenant.id),
             supabase.from('manuais').select('*'),
             supabase.from('logs_auditoria').select('*').order('data', {ascending: false}).limit(50),
             supabase.from('usuarios').select('*').eq('tenant_id', tenant.id)
