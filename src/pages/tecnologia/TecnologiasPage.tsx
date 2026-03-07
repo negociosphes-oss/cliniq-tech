@@ -1,339 +1,244 @@
-import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Server, Edit3, Trash2, CheckCircle, FileSpreadsheet, Download, Cpu, Factory, X, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Layers, Factory, Server, Trash2, Save, X, Loader2, UploadCloud, Zap } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import * as XLSX from 'xlsx';
-
-// 🚀 FAREJADOR DE SUBDOMÍNIO PADRÃO ENTERPRISE
-const getSubdomain = () => {
-  const hostname = window.location.hostname;
-  const parts = hostname.split('.');
-  if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
-      return parts[0];
-  }
-  return 'admin'; 
-};
 
 export function TecnologiasPage() {
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'tecnologias' | 'fabricantes' | 'modelos'>('tecnologias');
+  
   const [tecnologias, setTecnologias] = useState<any[]>([]);
-  const [busca, setBusca] = useState('');
-  
-  const [tenantId, setTenantId] = useState<number | null>(null); // 🚀 Blindado
-  
-  // Modal e Edição
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  
-  // Form State
-  const [formData, setFormData] = useState({
-    nome: '', 
-    fabricante: '',
-    modelo: '',
-    registro_anvisa: '',
-    criticidade: 'Média', 
-    ativo: true
-  });
+  const [fabricantes, setFabricantes] = useState<any[]>([]);
+  const [modelos, setModelos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Modais
+  const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  // 🚀 1. MOTOR FAREJADOR (IGUAL AO DA EQUIPE TÉCNICA)
-  useEffect(() => {
-    const initTenant = async () => {
-      const slug = getSubdomain();
-      
-      let { data } = await supabase
-        .from('empresas_inquilinas')
-        .select('id')
-        .eq('slug_subdominio', slug)
-        .maybeSingle();
+  // Formulários
+  const [modeloForm, setModeloForm] = useState({ tecnologia_id: '', fabricante_id: '', nome: '', classe_protecao_eletrica: 'Classe I', tipo_peca_aplicada: 'Tipo BF' });
+  const [simpleName, setSimpleName] = useState('');
 
-      if (!data) {
-          const { data: fallbackData } = await supabase
-            .from('empresas_inquilinas')
-            .select('id')
-            .order('id', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-          data = fallbackData;
-      }
+  useEffect(() => { fetchData(); }, [activeTab]);
 
-      if (data) {
-          setTenantId(data.id);
-          fetchTecnologias(data.id);
-      } else {
-          setTenantId(-1);
-          setLoading(false);
-      }
-    };
-    initTenant();
-  }, []);
-
-  // 🚀 2. FECHADURA DE LEITURA
-  const fetchTecnologias = async (tId: number) => {
-    if (tId === -1) return;
+  const fetchData = async () => {
     setLoading(true);
     try {
-        const { data, error } = await supabase
-            .from('tecnologias')
-            .select('*')
-            .eq('tenant_id', tId) // Trava de Segurança
-            .order('nome');
-        
-        if (error) throw error;
+      if (activeTab === 'tecnologias') {
+        const { data } = await supabase.from('dict_tecnologias').select('*').order('nome');
         setTecnologias(data || []);
-    } catch (error: any) {
-        console.error("Erro ao buscar tecnologias:", error.message);
-    } finally {
-        setLoading(false);
-    }
-  };
-
-  // 🚀 3. CARIMBO DE AUTORIA NO SALVAMENTO MANUAL
-  const handleSave = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!formData.nome || !formData.fabricante || !formData.modelo) return alert('Preencha os campos obrigatórios (*).');
-    if (!tenantId || tenantId === -1) return alert('Erro de segurança: Inquilino não identificado.');
-
-    try {
-      // Injeta o tenant_id silenciosamente
-      const payload = { ...formData, nome: formData.nome.toUpperCase(), tenant_id: tenantId };
-
-      if (editingItem) {
-        await supabase.from('tecnologias').update(payload).eq('id', editingItem.id).eq('tenant_id', tenantId);
+      } else if (activeTab === 'fabricantes') {
+        const { data } = await supabase.from('dict_fabricantes').select('*').order('nome');
+        setFabricantes(data || []);
       } else {
-        await supabase.from('tecnologias').insert([payload]);
+        const { data } = await supabase.from('dict_modelos').select('*, tecnologia:dict_tecnologias(nome), fabricante:dict_fabricantes(nome)').order('nome');
+        setModelos(data || []);
+        
+        // Carrega tec e fab para os selects do Modal de Modelo
+        const [tec, fab] = await Promise.all([
+            supabase.from('dict_tecnologias').select('*').order('nome'),
+            supabase.from('dict_fabricantes').select('*').order('nome')
+        ]);
+        setTecnologias(tec.data || []);
+        setFabricantes(fab.data || []);
       }
-      setIsModalOpen(false);
-      fetchTecnologias(tenantId);
-    } catch (error: any) {
-      alert('Erro ao salvar: ' + error.message);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  // 🚀 4. TRAVA DE EXCLUSÃO (HACKER-PROOF)
-  const handleDelete = async (id: number) => {
-    if (!tenantId || tenantId === -1) return;
-    if (!confirm('ATENÇÃO: Excluir este modelo pode afetar equipamentos vinculados. Continuar?')) return;
+  const handleSaveSingle = async () => {
+    setSaving(true);
+    try {
+      if (activeTab === 'tecnologias') {
+        if(!simpleName) return alert('Digite o nome do Tipo de Equipamento.');
+        await supabase.from('dict_tecnologias').insert([{ nome: simpleName }]);
+      } else if (activeTab === 'fabricantes') {
+        if(!simpleName) return alert('Digite o nome do Fabricante.');
+        await supabase.from('dict_fabricantes').insert([{ nome: simpleName }]);
+      } else {
+        if(!modeloForm.nome || !modeloForm.tecnologia_id || !modeloForm.fabricante_id) return alert('Preencha os campos obrigatórios do Modelo.');
+        await supabase.from('dict_modelos').insert([modeloForm]);
+      }
+      setIsSingleModalOpen(false);
+      setSimpleName('');
+      setModeloForm({ tecnologia_id: '', fabricante_id: '', nome: '', classe_protecao_eletrica: 'Classe I', tipo_peca_aplicada: 'Tipo BF' });
+      fetchData();
+    } catch (err) { alert('Erro ao salvar. Verifique se os dados estão corretos.'); } finally { setSaving(false); }
+  };
+
+  const handleSaveBulk = async () => {
+    if(!bulkText) return alert('Cole a lista de itens.');
+    setSaving(true);
+    const items = bulkText.split('\n').map(i => i.trim()).filter(i => i.length > 0);
     
     try {
-        const { error } = await supabase
-            .from('tecnologias')
-            .delete()
-            .eq('id', id)
-            .eq('tenant_id', tenantId); // Trava
-            
+      const payload = items.map(nome => ({ nome }));
+      if (activeTab === 'tecnologias') {
+        await supabase.from('dict_tecnologias').insert(payload);
+      } else if (activeTab === 'fabricantes') {
+        await supabase.from('dict_fabricantes').insert(payload);
+      }
+      setIsBulkModalOpen(false);
+      setBulkText('');
+      fetchData();
+      alert(`${items.length} itens importados com sucesso!`);
+    } catch (err) { alert('Erro na importação.'); } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if(!confirm('Deseja excluir este item?')) return;
+    try {
+        const table = activeTab === 'tecnologias' ? 'dict_tecnologias' : activeTab === 'fabricantes' ? 'dict_fabricantes' : 'dict_modelos';
+        const { error } = await supabase.from(table).delete().eq('id', id);
         if (error) throw error;
-        fetchTecnologias(tenantId);
-    } catch (error: any) {
-        alert('Erro ao excluir. Verifique vínculos: ' + error.message);
+        fetchData();
+    } catch(e: any) {
+        alert('Não é possível excluir. Este item já está sendo usado no sistema e foi bloqueado por segurança.');
     }
   };
-
-  const handleDownloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet([
-      { TIPO: 'VENTILADOR PULMONAR', FABRICANTE: 'DRAGER', MODELO: 'EVITA V300', ANVISA: '80012345678', CRITICIDADE: 'Alta' }
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Modelos");
-    XLSX.writeFile(wb, "Template_Importacao.xlsx");
-  };
-
-  // 🚀 5. CARIMBO DE AUTORIA NO UPLOAD EM LOTE
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!tenantId || tenantId === -1) return alert('Erro de segurança: Inquilino não identificado.');
-
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
-
-        if (data.length === 0) return alert('Arquivo vazio.');
-
-        const payload = data.map((row: any) => ({
-          nome: row['TIPO'] || row['NOME'] || 'DESCONHECIDO',
-          fabricante: row['FABRICANTE'] || '',
-          modelo: row['MODELO'] || '',
-          registro_anvisa: row['ANVISA'] || '',
-          criticidade: row['CRITICIDADE'] || 'Média',
-          ativo: true,
-          tenant_id: tenantId // 🚀 Injeta o dono em todas as linhas
-        }));
-
-        const { error } = await supabase.from('tecnologias').insert(payload);
-        if (error) throw error;
-        
-        alert(`${payload.length} modelos importados com sucesso!`);
-        fetchTecnologias(tenantId);
-      } catch (error) {
-        alert('Erro na importação. Verifique o formato do Excel.');
-      } finally {
-        if(fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  const openNew = () => {
-    setEditingItem(null);
-    setFormData({ nome: '', fabricante: '', modelo: '', registro_anvisa: '', criticidade: 'Média', ativo: true });
-    setIsModalOpen(true);
-  };
-
-  const openEdit = (item: any) => {
-    setEditingItem(item);
-    setFormData({ 
-       nome: item.nome, 
-       fabricante: item.fabricante, 
-       modelo: item.modelo, 
-       registro_anvisa: item.registro_anvisa, 
-       criticidade: item.criticidade, 
-       ativo: item.ativo 
-    });
-    setIsModalOpen(true);
-  };
-
-  const filteredList = tecnologias.filter(t => 
-    t.nome?.toLowerCase().includes(busca.toLowerCase()) ||
-    t.modelo?.toLowerCase().includes(busca.toLowerCase()) ||
-    t.fabricante?.toLowerCase().includes(busca.toLowerCase())
-  );
-
-  if (!tenantId) return <div className="p-8 text-center flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>;
 
   return (
     <div className="p-8 animate-fadeIn max-w-7xl mx-auto pb-24">
-      
-      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-         <div>
-            <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
-               <span className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100"><Cpu size={24} strokeWidth={1.5}/></span>
-               Catálogo de Tecnologias
-            </h2>
-            <p className="text-slate-500 font-medium mt-2 ml-1">Padronização de modelos para inventário.</p>
-         </div>
-         
-         <div className="flex gap-2">
-            <button onClick={handleDownloadTemplate} className="h-12 px-4 bg-white border border-slate-200 text-slate-500 hover:text-slate-800 rounded-xl font-bold flex items-center gap-2 shadow-sm">
-                <Download size={18}/>
-            </button>
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} className="h-12 px-4 bg-white border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all">
-               <FileSpreadsheet size={18}/> Importar Excel
-            </button>
-            <button onClick={openNew} className="h-12 px-6 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95">
-               <Plus size={20}/> Novo Modelo
-            </button>
-         </div>
+        <div>
+          <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3">
+            <span className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg"><Layers size={24}/></span> 
+            Dicionário Estrutural
+          </h2>
+          <p className="text-slate-500 font-medium mt-2">Construa a base hierárquica de tecnologias da Engenharia Clínica.</p>
+        </div>
+        <div className="flex gap-3">
+           {(activeTab === 'tecnologias' || activeTab === 'fabricantes') && (
+              <button onClick={() => setIsBulkModalOpen(true)} className="h-12 px-6 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all active:scale-95">
+                <UploadCloud size={20}/> Subir em Massa
+              </button>
+           )}
+           <button onClick={() => setIsSingleModalOpen(true)} className="h-12 px-6 bg-indigo-600 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+             <Plus size={20}/> Novo Registro
+           </button>
+        </div>
       </div>
 
-      {/* Busca */}
-      <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 mb-6 flex gap-2">
-         <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
-            <input 
-               className="w-full h-12 pl-12 pr-4 bg-white rounded-xl outline-none text-slate-700 font-medium placeholder:text-slate-400 focus:bg-slate-50 transition-colors"
-               placeholder="Buscar por Nome, Fabricante ou Modelo..."
-               value={busca}
-               onChange={e => setBusca(e.target.value)}
-            />
+      {/* TABS DE NAVEGAÇÃO */}
+      <div className="flex gap-4 mb-6 border-b border-slate-200">
+        <button onClick={() => setActiveTab('tecnologias')} className={`py-4 px-6 text-sm font-black uppercase tracking-widest border-b-4 transition-all ${activeTab === 'tecnologias' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>1. Tipos (Tecnologias)</button>
+        <button onClick={() => setActiveTab('fabricantes')} className={`py-4 px-6 text-sm font-black uppercase tracking-widest border-b-4 transition-all ${activeTab === 'fabricantes' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>2. Fabricantes</button>
+        <button onClick={() => setActiveTab('modelos')} className={`py-4 px-6 text-sm font-black uppercase tracking-widest border-b-4 transition-all ${activeTab === 'modelos' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>3. Modelos & IEC</button>
+      </div>
+
+      {/* TABELA DE DADOS */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        {loading ? <div className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto" size={32}/></div> : (
+           <div className="overflow-x-auto">
+             <table className="w-full text-left whitespace-nowrap">
+               <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200">
+                 <tr>
+                   <th className="p-5 pl-8">{activeTab === 'modelos' ? 'Tecnologia > Fabricante' : 'Nomenclatura Padrão'}</th>
+                   {activeTab === 'modelos' && <th className="p-5">Modelo Exato</th>}
+                   {activeTab === 'modelos' && <th className="p-5">Segurança Elétrica</th>}
+                   <th className="p-5 text-right pr-8">Ações</th>
+                 </tr>
+               </thead>
+               <tbody className="divide-y divide-slate-100 text-sm font-medium">
+                  {activeTab === 'tecnologias' && tecnologias.map(t => (
+                     <tr key={t.id} className="hover:bg-slate-50"><td className="p-5 pl-8">{t.nome}</td><td className="p-5 text-right pr-8"><button onClick={() => handleDelete(t.id)} className="text-rose-500"><Trash2 size={18}/></button></td></tr>
+                  ))}
+                  {activeTab === 'fabricantes' && fabricantes.map(f => (
+                     <tr key={f.id} className="hover:bg-slate-50"><td className="p-5 pl-8">{f.nome}</td><td className="p-5 text-right pr-8"><button onClick={() => handleDelete(f.id)} className="text-rose-500"><Trash2 size={18}/></button></td></tr>
+                  ))}
+                  {activeTab === 'modelos' && modelos.map(m => (
+                     <tr key={m.id} className="hover:bg-slate-50">
+                         <td className="p-5 pl-8">
+                             <div className="font-bold text-slate-700">{m.tecnologia?.nome}</div>
+                             <div className="text-xs text-slate-500">{m.fabricante?.nome}</div>
+                         </td>
+                         <td className="p-5 font-black text-indigo-700">{m.nome}</td>
+                         <td className="p-5">
+                             <div className="flex gap-2">
+                                <span className="px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-black uppercase">{m.classe_protecao_eletrica}</span>
+                                <span className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-black uppercase flex items-center gap-1"><Zap size={10}/> {m.tipo_peca_aplicada}</span>
+                             </div>
+                         </td>
+                         <td className="p-5 text-right pr-8"><button onClick={() => handleDelete(m.id)} className="text-rose-500"><Trash2 size={18}/></button></td>
+                     </tr>
+                  ))}
+               </tbody>
+             </table>
+           </div>
+        )}
+      </div>
+
+      {/* MODAL DE CADASTRO INDIVIDUAL */}
+      {isSingleModalOpen && (
+         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+             <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl">
+                 <h3 className="font-black text-xl mb-4">Novo Cadastro</h3>
+                 
+                 {activeTab !== 'modelos' ? (
+                     <div>
+                         <label className="text-xs font-bold text-slate-500 uppercase">{activeTab === 'tecnologias' ? 'Nome do Tipo (Ex: Monitor)' : 'Nome do Fabricante (Ex: Philips)'}</label>
+                         <input className="w-full h-12 px-4 border rounded-xl mt-2 outline-none focus:border-indigo-500" value={simpleName} onChange={e => setSimpleName(e.target.value)}/>
+                     </div>
+                 ) : (
+                     <div className="space-y-4">
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">1. Selecione a Tecnologia *</label>
+                            <select className="w-full h-12 px-4 border rounded-xl mt-1 outline-none focus:border-indigo-500" value={modeloForm.tecnologia_id} onChange={e => setModeloForm({...modeloForm, tecnologia_id: e.target.value})}>
+                                <option value="">Selecione...</option>{tecnologias.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                            </select>
+                         </div>
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">2. Selecione o Fabricante *</label>
+                            <select className="w-full h-12 px-4 border rounded-xl mt-1 outline-none focus:border-indigo-500" value={modeloForm.fabricante_id} onChange={e => setModeloForm({...modeloForm, fabricante_id: e.target.value})}>
+                                <option value="">Selecione...</option>{fabricantes.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                            </select>
+                         </div>
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">3. Nome do Modelo Exato *</label>
+                            <input className="w-full h-12 px-4 border rounded-xl mt-1 outline-none focus:border-indigo-500" placeholder="Ex: MX40" value={modeloForm.nome} onChange={e => setModeloForm({...modeloForm, nome: e.target.value})}/>
+                         </div>
+                         <div className="grid grid-cols-2 gap-4 pt-4 border-t mt-2">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase">Proteção Elétrica</label>
+                                <select className="w-full h-10 px-3 border rounded-lg mt-1 outline-none focus:border-indigo-500" value={modeloForm.classe_protecao_eletrica} onChange={e => setModeloForm({...modeloForm, classe_protecao_eletrica: e.target.value})}><option>Classe I</option><option>Classe II</option><option>Energizado Internamente</option></select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase">Peça Aplicada</label>
+                                <select className="w-full h-10 px-3 border rounded-lg mt-1 outline-none focus:border-indigo-500" value={modeloForm.tipo_peca_aplicada} onChange={e => setModeloForm({...modeloForm, tipo_peca_aplicada: e.target.value})}><option>Não se aplica</option><option>Tipo B</option><option>Tipo BF</option><option>Tipo CF</option></select>
+                            </div>
+                         </div>
+                     </div>
+                 )}
+
+                 <div className="flex justify-end gap-3 mt-8">
+                    <button onClick={() => setIsSingleModalOpen(false)} className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                    <button onClick={handleSaveSingle} disabled={saving} className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl flex gap-2 items-center hover:bg-indigo-700 transition-colors shadow-lg">{saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} Salvar</button>
+                 </div>
+             </div>
          </div>
-      </div>
+      )}
 
-      {/* Grid de Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-         {loading ? (
-           <div className="col-span-full py-12 flex justify-center text-indigo-500"><Loader2 className="animate-spin" size={32}/></div>
-         ) : filteredList.length === 0 ? (
-           <div className="col-span-full py-12 text-center text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">Nenhum modelo cadastrado para esta unidade.</div>
-         ) : filteredList.map(item => (
-            <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group relative">
-               
-               <div className="flex justify-between items-start mb-4">
-                  <div className="p-3 bg-slate-50 text-slate-500 rounded-2xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                     <Factory size={20}/>
-                  </div>
-                  <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${item.ativo ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                     {item.ativo ? 'Ativo' : 'Inativo'}
-                  </div>
-               </div>
+      {/* MODAL DE UPLOAD EM MASSA */}
+      {isBulkModalOpen && (
+         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+             <div className="bg-white rounded-3xl p-6 w-full max-w-xl shadow-2xl">
+                 <h3 className="font-black text-xl mb-2 flex items-center gap-2"><UploadCloud className="text-indigo-600"/> Importação Rápida</h3>
+                 <p className="text-sm text-slate-500 mb-4">Copie uma coluna do Excel e cole aqui. Cada linha será salva como um novo registro em <strong>{activeTab === 'tecnologias' ? 'Tipos de Equipamento' : 'Fabricantes'}</strong>.</p>
+                 
+                 <textarea 
+                    className="w-full h-64 p-4 border-2 border-indigo-100 rounded-xl outline-none focus:border-indigo-500 text-sm font-mono whitespace-pre custom-scrollbar bg-slate-50"
+                    placeholder={`Bomba de Infusão\nMonitor Multiparâmetro\nVentilador Pulmonar...`}
+                    value={bulkText}
+                    onChange={e => setBulkText(e.target.value)}
+                 />
 
-               <h3 className="text-lg font-black text-slate-800 mb-1 leading-tight">{item.nome}</h3>
-               <p className="text-sm text-slate-500 font-medium">{item.fabricante} • {item.modelo}</p>
-
-               <div className="mt-6 pt-4 border-t border-slate-50 flex justify-between items-center">
-                  <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{item.registro_anvisa ? `ANVISA: ${item.registro_anvisa}` : 'Sem Registro'}</span>
-                  <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                     <button onClick={() => openEdit(item)} className="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-colors"><Edit3 size={18}/></button>
-                     <button onClick={() => handleDelete(item.id)} className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors"><Trash2 size={18}/></button>
-                  </div>
-               </div>
-            </div>
-         ))}
-      </div>
-
-      {/* Modal Clean */}
-      {isModalOpen && (
-         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4 animate-fadeIn">
-            <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-               
-               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-                  <div className="flex items-center gap-3">
-                     <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl"><Server size={20}/></div>
-                     <h3 className="text-xl font-black text-slate-800">{editingItem ? 'Editar Modelo' : 'Novo Modelo'}</h3>
-                  </div>
-                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"><X size={24}/></button>
-               </div>
-               
-               <div className="p-8 grid md:grid-cols-2 gap-6 bg-slate-50/50">
-                  <div className="col-span-2">
-                     <label className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 block ml-1">Tipo de Equipamento *</label>
-                     <input className="input-theme w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all" value={formData.nome} onChange={e => setFormData({...formData, nome: e.target.value})} placeholder="Ex: VENTILADOR PULMONAR" />
-                  </div>
-                  <div>
-                     <label className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 block ml-1">Fabricante *</label>
-                     <input className="input-theme w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all" value={formData.fabricante} onChange={e => setFormData({...formData, fabricante: e.target.value})} placeholder="Ex: DRAGER" />
-                  </div>
-                  <div>
-                     <label className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 block ml-1">Modelo *</label>
-                     <input className="input-theme w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all" value={formData.modelo} onChange={e => setFormData({...formData, modelo: e.target.value})} placeholder="Ex: EVITA V300" />
-                  </div>
-                  <div>
-                     <label className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 block ml-1">Registro ANVISA</label>
-                     <input className="input-theme w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all font-mono" value={formData.registro_anvisa} onChange={e => setFormData({...formData, registro_anvisa: e.target.value})} />
-                  </div>
-                  <div>
-                     <label className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 block ml-1">Criticidade</label>
-                     <select className="input-theme w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer" value={formData.criticidade} onChange={e => setFormData({...formData, criticidade: e.target.value})}>
-                        <option>Baixa</option><option>Média</option><option>Alta</option><option>Crítica</option>
-                     </select>
-                  </div>
-                  <div className="col-span-2 pt-2">
-                     <label className="flex items-center gap-3 cursor-pointer p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition-all">
-                        <input type="checkbox" className="w-5 h-5 accent-indigo-600 rounded" checked={formData.ativo} onChange={e => setFormData({...formData, ativo: e.target.checked})} />
-                        <div>
-                           <span className="text-sm font-bold text-slate-700 block">Cadastro Ativo</span>
-                           <span className="text-xs text-slate-400">Disponível para seleção no inventário</span>
-                        </div>
-                     </label>
-                  </div>
-               </div>
-
-               <div className="p-6 border-t border-slate-100 bg-white flex justify-end gap-3">
-                  <button onClick={() => setIsModalOpen(false)} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all">Cancelar</button>
-                  <button onClick={() => handleSave()} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95 flex items-center gap-2">
-                     <CheckCircle size={18}/> Salvar Modelo
-                  </button>
-               </div>
-            </div>
+                 <div className="flex justify-end gap-3 mt-6">
+                    <button onClick={() => setIsBulkModalOpen(false)} className="px-6 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Cancelar</button>
+                    <button onClick={handleSaveBulk} disabled={saving} className="px-8 py-3 bg-emerald-600 text-white font-black rounded-xl flex gap-2 items-center shadow-lg hover:bg-emerald-700 transition-colors">{saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} Importar Tudo</button>
+                 </div>
+             </div>
          </div>
       )}
     </div>
-  )
+  );
 }

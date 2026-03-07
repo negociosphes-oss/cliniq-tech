@@ -12,6 +12,9 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
   const [loadingData, setLoadingData] = useState(false);
   const [activeTab, setActiveTab] = useState<'geral' | 'resultados'>('geral');
 
+  // 🚀 ESTADO: Controla se a OS deve ser fechada automaticamente
+  const [autoCloseOs, setAutoCloseOs] = useState(true);
+
   const [equipamentos, setEquipamentos] = useState<any[]>();
   const [equipe, setEquipe] = useState<any[]>();
   const [perfis, setPerfis] = useState<any[]>(); 
@@ -24,29 +27,35 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
   });
 
   useEffect(() => {
-    if (isOpen && tenantId) {
+    if (isOpen) {
       fetchSupportData();
       if (editId) loadEnsaio(editId);
       else setForm(prev => ({...prev, equipamento_id: defaultEquipamentoId ? defaultEquipamentoId.toString() : ''}));
     }
-  }, [isOpen, editId, tenantId, defaultEquipamentoId]);
+  }, [isOpen, editId, defaultEquipamentoId]);
 
   const fetchSupportData = async () => {
-    const { data: equipData } = await supabase.from('equipamentos').select('id, tag, modelo, tecnologias(nome)').eq('tenant_id', tenantId).order('tag');
-    if (equipData) setEquipamentos(equipData);
-
-    const { data: equipeData } = await supabase.from('equipe_tecnica').select('id, nome, cargo').eq('tenant_id', tenantId).order('nome');
-    if (equipeData) setEquipe(equipeData);
-
-    const { data: perfisData } = await supabase.from('metrologia_tse_normas').select('*').eq('tenant_id', tenantId).order('nome_perfil');
-    if (perfisData) setPerfis(perfisData);
+    try {
+        const { data: equipData } = await supabase.from('equipamentos')
+          .select('id, tag, nome, tecnologia:tecnologias(nome), dict_modelos(classe_protecao_eletrica, tipo_peca_aplicada)')
+          .order('tag');
+        if (equipData) setEquipamentos(equipData);
+    } catch (e) {}
 
     try {
-        const { data: padroesData, error } = await supabase.from('padroes').select('*');
-        if (!error && padroesData && padroesData.length > 0) {
-            setPadroes(padroesData);
-        }
-    } catch (e) { console.warn("Tabela de Padrões não encontrada."); }
+        const { data: equipeData } = await supabase.from('equipe_tecnica').select('id, nome, cargo').order('nome');
+        if (equipeData) setEquipe(equipeData);
+    } catch (e) {}
+
+    try {
+        const { data: perfisData } = await supabase.from('metrologia_tse_normas').select('*').order('nome_perfil');
+        if (perfisData) setPerfis(perfisData);
+    } catch (e) {}
+
+    try {
+        const { data: padroesData } = await supabase.from('padroes').select('*');
+        if (padroesData) setPadroes(padroesData);
+    } catch (e) {}
   };
 
   const loadEnsaio = async (id: number) => {
@@ -57,28 +66,40 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
         setForm({
           ...data, equipamento_id: data.equipamento_id.toString(), id_tecnico_executor: data.id_tecnico_executor?.toString() || '',
           perfil_id: data.perfil_id?.toString() || '', resultados_json: typeof data.resultados_json === 'string' ? JSON.parse(data.resultados_json) : (data.resultados_json || []),
-          analisador_utilizado: data.analisador_utilizado || '' // Carrega o que estiver no banco
+          analisador_utilizado: data.analisador_utilizado || '' 
         });
       }
     } catch (err: any) { alert(err.message); } finally { setLoadingData(false); }
+  };
+
+  const handleEquipamentoChange = (eqId: string) => {
+      setForm(prev => ({ ...prev, equipamento_id: eqId }));
+      if (!eqId || editId) return; 
+
+      const equipamentoSelecionado = equipamentos?.find(e => e.id.toString() === eqId);
+      if(equipamentoSelecionado && equipamentoSelecionado.dict_modelos) {
+          const eqClasse = equipamentoSelecionado.dict_modelos.classe_protecao_eletrica;
+          const eqPeca = equipamentoSelecionado.dict_modelos.tipo_peca_aplicada;
+          const perfilMatch = perfis?.find(p => p.classe_equipamento === eqClasse && p.tipo_peca_aplicada === eqPeca);
+          
+          if(perfilMatch) {
+              handlePerfilChange(perfilMatch.id.toString());
+          }
+      }
   };
 
   const handlePerfilChange = (pid: string) => {
      const pSelecionado = (perfis || []).find(p => p.id.toString() === pid);
      if (pSelecionado) {
         const parametros = typeof pSelecionado.parametros === 'string' ? JSON.parse(pSelecionado.parametros) : (pSelecionado.parametros || []);
-        
         const novosPontos = parametros.map((param: any) => ({
            id_parametro: param.id,
            tipo_campo: param.tipo_campo || 'medicao',
-           nome: param.nome,
-           unidade: param.unidade,
-           operador: param.operador,
+           nome: param.nome, unidade: param.unidade, operador: param.operador,
            limite: param.tipo_campo === 'medicao' ? Number(param.limite) : null,
-           valor_medido: '',
-           aprovado: param.tipo_campo === 'secao' ? true : null
+           valor_medido: '', aprovado: param.tipo_campo === 'secao' ? true : null
         }));
-
+        
         setForm(prev => ({ ...prev, perfil_id: pid, norma_aplicada: pSelecionado.norma_referencia, resultados_json: novosPontos }));
      }
   };
@@ -87,14 +108,12 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
      const novosResultados = [...form.resultados_json];
      const ponto = novosResultados[index];
      ponto.valor_medido = valor;
-     
      if (valor === '') ponto.aprovado = null;
      else {
         const numValor = parseFloat(valor);
         if (ponto.operador === '<=') ponto.aprovado = numValor <= ponto.limite;
         if (ponto.operador === '>=') ponto.aprovado = numValor >= ponto.limite;
      }
-     
      novosResultados[index] = ponto;
      checkGlobalResult(novosResultados);
   };
@@ -119,22 +138,42 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
     setLoading(true);
     try {
       const payload = {
-        tenant_id: tenantId, equipamento_id: Number(form.equipamento_id), ordem_servico_id: osId || null, perfil_id: Number(form.perfil_id), id_tecnico_executor: form.id_tecnico_executor ? Number(form.id_tecnico_executor) : null, analisador_utilizado: form.analisador_utilizado, data_ensaio: form.data_ensaio, norma_aplicada: form.norma_aplicada, resultado: form.resultado, observacoes_gerais: form.observacoes_gerais, resultados_json: form.resultados_json 
+        tenant_id: tenantId || 1, equipamento_id: Number(form.equipamento_id), ordem_servico_id: osId || null, perfil_id: Number(form.perfil_id), id_tecnico_executor: form.id_tecnico_executor ? Number(form.id_tecnico_executor) : null, analisador_utilizado: form.analisador_utilizado, data_ensaio: form.data_ensaio, norma_aplicada: form.norma_aplicada, resultado: form.resultado, observacoes_gerais: form.observacoes_gerais, resultados_json: form.resultados_json 
       };
 
-      if (editId) {
-        const { error } = await supabase.from('metrologia_tse').update(payload).eq('id', editId);
-        if (error) throw error;
+      if (editId) await supabase.from('metrologia_tse').update(payload).eq('id', editId);
+      else await supabase.from('metrologia_tse').insert([payload]);
+
+      // 🚀 MÁGICA DE ENCERRAMENTO AUTOMÁTICO (INJETANDO N/A PARA BYPASSAR A BUROCRACIA)
+      if (osId && autoCloseOs) {
+          const { error: osError } = await supabase.from('ordens_servico').update({
+              status: 'Concluída',
+              data_fechamento: new Date().toISOString(),
+              
+              // Injeção Antiburocracia
+              defeito_relatado: 'Procedimento Normativo de Metrologia (TSE)',
+              falha_constatada: 'N/A - Equipamento funcional, ensaio preventivo.',
+              causa_raiz: 'N/A - Teste de Segurança Elétrica (NBR IEC 62353)',
+              solucao_aplicada: `Ensaio NBR IEC 62353 executado via módulo de Metrologia. Resultado final do laudo: ${form.resultado}.`
+          }).eq('id', osId);
+          
+          if (osError) {
+              console.error("Erro ao auto-fechar OS:", osError);
+              alert('Laudo salvo, mas a O.S. não fechou automaticamente devido a regras do banco.');
+          } else {
+              alert('Laudo registrado e O.S. encerrada com sucesso!');
+          }
       } else {
-        const { error } = await supabase.from('metrologia_tse').insert([payload]);
-        if (error) throw error;
+          alert('Laudo registrado com sucesso!');
       }
 
-      alert('Ensaio registrado com sucesso!'); onSuccess(); onClose();
+      onSuccess(); onClose();
     } catch (err: any) { alert('Erro ao salvar: ' + err.message); } finally { setLoading(false); }
   };
 
   if (!isOpen) return null;
+
+  const isPerfilDeletado = editId && form.perfil_id && perfis && perfis.length > 0 && !perfis.some(p => p.id.toString() === form.perfil_id);
 
   return (
     <div className="fixed inset-0 z-[10000] overflow-y-auto bg-slate-900/90 backdrop-blur-sm custom-scrollbar">
@@ -146,7 +185,7 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
               <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30 text-indigo-400"><Zap size={24}/></div>
               <div>
                 <h2 className="text-xl font-black text-white tracking-tight">{editId ? 'Editar Ensaio Elétrico' : 'Novo Ensaio Dinâmico'}</h2>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">Laudo Flexível de Segurança Elétrica</p>
+                <p className="text-xs text-slate-400 font-medium mt-0.5">Laudo Flexível de Segurança Elétrica (IEC 62353)</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-800 hover:text-white rounded-full transition-colors"><X size={24}/></button>
@@ -164,21 +203,34 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
               <>
                 {activeTab === 'geral' && (
                   <div className="space-y-6 max-w-3xl mx-auto">
+                    
+                    {isPerfilDeletado && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 flex items-start gap-4">
+                            <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={24}/>
+                            <div>
+                                <h4 className="text-sm font-black text-amber-800 uppercase tracking-wide">Perfil Original Excluído</h4>
+                                <p className="text-xs font-medium text-amber-700 mt-1 leading-relaxed">
+                                    A Norma TSE que gerou este laudo foi apagada do painel mestre. O histórico de testes foi preservado por segurança. <strong>Selecione uma norma vigente na lista abaixo para substituir o teste antigo.</strong>
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
                       
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black uppercase text-indigo-600">Perfil de Teste (Norma) *</label>
-                        <select className="w-full h-14 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 text-base font-bold text-indigo-900 dark:text-indigo-300 outline-none focus:border-indigo-500 transition-colors" value={form.perfil_id} onChange={e => handlePerfilChange(e.target.value)}>
-                          <option value="">Selecione o perfil criado no painel...</option>
-                          {(perfis || []).map(p => <option key={p.id} value={p.id}>{p.nome_perfil} ({p.classe_equipamento} | {p.tipo_peca_aplicada})</option>)}
+                        <label className="text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Equipamento Avaliado *</label>
+                        <select className="w-full h-14 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-base font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-50" value={form.equipamento_id} disabled={!!defaultEquipamentoId} onChange={e => handleEquipamentoChange(e.target.value)}>
+                          <option value="">Selecione...</option>
+                          {(equipamentos || []).map(eq => <option key={eq.id} value={eq.id}>[TAG: {eq.tag}] - {eq.nome || eq.tecnologia?.nome || 'Equipamento'}</option>)}
                         </select>
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[11px] font-black uppercase text-slate-500 dark:text-slate-400">Equipamento Avaliado *</label>
-                        <select className="w-full h-14 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-base font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-50" value={form.equipamento_id} disabled={!!defaultEquipamentoId} onChange={e => setForm({...form, equipamento_id: e.target.value})}>
-                          <option value="">Selecione...</option>
-                          {(equipamentos || []).map(eq => <option key={eq.id} value={eq.id}>[TAG: {eq.tag}] - {eq.tecnologias?.nome}</option>)}
+                        <label className="text-[11px] font-black uppercase text-indigo-600">Perfil de Teste (Norma) *</label>
+                        <select className={`w-full h-14 bg-white dark:bg-slate-800 border rounded-xl px-4 text-base font-bold outline-none transition-colors ${isPerfilDeletado ? 'border-amber-400 text-amber-700 ring-4 ring-amber-50' : 'border-indigo-200 text-indigo-900 focus:border-indigo-500'}`} value={form.perfil_id} onChange={e => handlePerfilChange(e.target.value)}>
+                          <option value="">Selecione o perfil criado no painel...</option>
+                          {(perfis || []).map(p => <option key={p.id} value={p.id}>{p.nome_perfil} ({p.classe_equipamento} | {p.tipo_peca_aplicada})</option>)}
                         </select>
                       </div>
 
@@ -199,30 +251,15 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
                     
                     <div className="bg-indigo-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-indigo-100 dark:border-slate-700 shadow-sm">
                        <label className="text-[11px] font-black uppercase text-indigo-700 dark:text-indigo-400 block mb-2">Padrão / Analisador Utilizado (Rastreabilidade RBC) *</label>
-                       
                        {(padroes && padroes.length > 0) ? (
-                           <select 
-                              className="w-full h-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-base font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500" 
-                              value={form.analisador_utilizado} 
-                              onChange={e => setForm({...form, analisador_utilizado: e.target.value})}
-                           >
+                           <select className="w-full h-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-base font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500" value={form.analisador_utilizado} onChange={e => setForm({...form, analisador_utilizado: e.target.value})}>
                               <option value="">Selecione o Analisador da Frota...</option>
-                              {padroes.map(p => {
-                                 // Aqui salva o JSON limpo para o PDF ler depois
-                                 const pJson = JSON.stringify(p);
-                                 return (
-                                    <option key={p.id} value={pJson}>
-                                       {p.nome || 'Padrão'} {p.fabricante || ''} - S/N: {p.n_serie || 'N/A'}
-                                    </option>
-                                 );
-                              })}
+                              {padroes.map(p => <option key={p.id} value={JSON.stringify(p)}>{p.nome || 'Padrão'} {p.fabricante || ''} - S/N: {p.n_serie || 'N/A'}</option>)}
                            </select>
                        ) : (
                            <input placeholder="Digite o nome e N. Série do analisador..." className="w-full h-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-base font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500" value={form.analisador_utilizado} onChange={e => setForm({...form, analisador_utilizado: e.target.value})} />
                        )}
-                       <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">Selecione para preencher a tabela completa de rastreabilidade (ONA/ISO) no PDF final.</p>
                     </div>
-
                   </div>
                 )}
 
@@ -235,24 +272,17 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
                        </div>
                     ) : (
                        <div className="space-y-4">
-                          
                           {form.resultados_json.map((ponto, index) => {
-                             if (ponto.tipo_campo === 'secao') {
-                                return <div key={index} className="bg-slate-800 text-white p-4 px-5 rounded-xl font-black uppercase text-sm mt-10 mb-4 tracking-widest shadow-md flex items-center gap-3"><Type size={18} className="text-slate-400"/> {ponto.nome}</div>;
-                             }
-
-                             if (ponto.tipo_campo === 'booleano') {
-                                return (
-                                   <div key={index} className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all hover:border-indigo-300">
-                                      <label className="text-[13px] font-black uppercase text-slate-800 dark:text-slate-200 flex-1 flex items-center gap-3"><ToggleLeft size={20} className="text-slate-400"/> {ponto.nome}</label>
-                                      <div className="flex gap-2 w-full sm:w-auto">
-                                         <button onClick={() => handleBooleanChange(index, true)} className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-sm font-bold border-2 transition-all flex justify-center items-center gap-2 ${ponto.aprovado === true ? 'bg-emerald-50 text-emerald-700 border-emerald-500 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-emerald-300'}`}><Check size={18}/> Passa</button>
-                                         <button onClick={() => handleBooleanChange(index, false)} className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-sm font-bold border-2 transition-all flex justify-center items-center gap-2 ${ponto.aprovado === false ? 'bg-rose-50 text-rose-700 border-rose-500 dark:bg-rose-900/20 dark:text-rose-400' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500 hover:border-rose-300'}`}><XCircle size={18}/> Falha</button>
-                                      </div>
+                             if (ponto.tipo_campo === 'secao') return <div key={index} className="bg-slate-800 text-white p-4 px-5 rounded-xl font-black uppercase text-sm mt-10 mb-4 tracking-widest shadow-md flex items-center gap-3"><Type size={18} className="text-slate-400"/> {ponto.nome}</div>;
+                             if (ponto.tipo_campo === 'booleano') return (
+                                <div key={index} className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all hover:border-indigo-300">
+                                   <label className="text-[13px] font-black uppercase text-slate-800 dark:text-slate-200 flex-1 flex items-center gap-3"><ToggleLeft size={20} className="text-slate-400"/> {ponto.nome}</label>
+                                   <div className="flex gap-2 w-full sm:w-auto">
+                                      <button onClick={() => handleBooleanChange(index, true)} className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-sm font-bold border-2 transition-all flex justify-center items-center gap-2 ${ponto.aprovado === true ? 'bg-emerald-50 text-emerald-700 border-emerald-500' : 'bg-white text-slate-500 hover:border-emerald-300'}`}><Check size={18}/> Passa</button>
+                                      <button onClick={() => handleBooleanChange(index, false)} className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-sm font-bold border-2 transition-all flex justify-center items-center gap-2 ${ponto.aprovado === false ? 'bg-rose-50 text-rose-700 border-rose-500' : 'bg-white text-slate-500 hover:border-rose-300'}`}><XCircle size={18}/> Falha</button>
                                    </div>
-                                );
-                             }
-
+                                </div>
+                             );
                              return (
                                 <div key={index} className="bg-slate-50 dark:bg-slate-800/50 p-5 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all hover:border-indigo-300">
                                    <div className="flex-1 w-full sm:w-auto">
@@ -265,9 +295,9 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
                                          <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">{ponto.unidade}</span>
                                       </div>
                                       <div className="w-24 sm:w-28 text-center shrink-0">
-                                         {ponto.aprovado === true && <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-4 py-2 rounded-xl font-black text-xs uppercase shadow-sm border border-emerald-200 dark:border-emerald-800 w-full block">Passa</span>}
-                                         {ponto.aprovado === false && <span className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 px-4 py-2 rounded-xl font-black text-xs uppercase shadow-sm border border-rose-200 dark:border-rose-800 w-full block">Falha</span>}
-                                         {ponto.aprovado === null && <span className="bg-slate-200 dark:bg-slate-800 text-slate-500 px-4 py-2 rounded-xl font-black text-xs uppercase border border-slate-300 dark:border-slate-700 w-full block">Pendente</span>}
+                                         {ponto.aprovado === true && <span className="bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl font-black text-xs uppercase shadow-sm border border-emerald-200 w-full block">Passa</span>}
+                                         {ponto.aprovado === false && <span className="bg-rose-100 text-rose-700 px-4 py-2 rounded-xl font-black text-xs uppercase shadow-sm border border-rose-200 w-full block">Falha</span>}
+                                         {ponto.aprovado === null && <span className="bg-slate-200 text-slate-500 px-4 py-2 rounded-xl font-black text-xs uppercase border border-slate-300 w-full block">Pendente</span>}
                                       </div>
                                    </div>
                                 </div>
@@ -277,11 +307,10 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
                           <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 mt-10 shadow-sm">
                              <label className="text-[12px] font-black uppercase text-slate-500 block mb-4 text-center">Parecer Automático do Ensaio</label>
                              <div className="flex gap-4">
-                               <div className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-xl border-2 transition-all font-black uppercase text-base ${form.resultado === 'APROVADO' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'border-slate-100 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}><ShieldCheck size={24}/> Aprovado</div>
-                               <div className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-xl border-2 transition-all font-black uppercase text-base ${form.resultado === 'REPROVADO' ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400' : 'border-slate-100 dark:border-slate-700 text-slate-300 dark:text-slate-600'}`}><AlertTriangle size={24}/> Reprovado</div>
+                               <div className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-xl border-2 transition-all font-black uppercase text-base ${form.resultado === 'APROVADO' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-100 text-slate-300'}`}><ShieldCheck size={24}/> Aprovado</div>
+                               <div className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-xl border-2 transition-all font-black uppercase text-base ${form.resultado === 'REPROVADO' ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-100 text-slate-300'}`}><AlertTriangle size={24}/> Reprovado</div>
                              </div>
                           </div>
-
                        </div>
                     )}
                   </div>
@@ -290,15 +319,28 @@ export function TseFormModal({ isOpen, onClose, onSuccess, editId, tenantId, osI
             )}
           </div>
 
-          <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex justify-end gap-4">
-            <button onClick={onClose} className="px-8 py-3 text-slate-500 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">Cancelar</button>
-            {activeTab === 'geral' ? (
-               <button onClick={() => setActiveTab('resultados')} className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 px-10 py-3 rounded-xl font-black shadow-sm flex items-center gap-2 hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-all uppercase tracking-widest text-base">Próximo <Activity size={20}/></button>
-            ) : (
-               <button onClick={handleSave} disabled={loading || form.resultados_json.length === 0} className="bg-indigo-600 text-white px-10 py-3 rounded-xl font-black shadow-xl flex items-center gap-2 hover:bg-indigo-700 transition-all uppercase tracking-widest text-base disabled:opacity-50">
-                 {loading ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Registrar Laudo
-               </button>
-            )}
+          <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
+            {/* Esquerda: Checkbox Auto-Fechar OS */}
+            <div className="w-full md:w-auto">
+                {activeTab === 'resultados' && osId && (
+                    <label className="flex items-center justify-center gap-3 cursor-pointer p-3 px-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-indigo-300 transition-all shadow-sm">
+                        <input type="checkbox" className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-600 cursor-pointer" checked={autoCloseOs} onChange={e => setAutoCloseOs(e.target.checked)}/>
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Finalizar O.S. automaticamente</span>
+                    </label>
+                )}
+            </div>
+
+            {/* Direita: Botões de Ação */}
+            <div className="flex gap-3 w-full md:w-auto">
+                <button onClick={onClose} className="flex-1 md:flex-none px-8 py-4 md:py-3 text-slate-500 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors">Cancelar</button>
+                {activeTab === 'geral' ? (
+                   <button onClick={() => setActiveTab('resultados')} className="flex-1 md:flex-none justify-center bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400 px-10 py-4 md:py-3 rounded-xl font-black shadow-sm flex items-center gap-2 hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-all uppercase tracking-widest text-base">Próximo <Activity size={20}/></button>
+                ) : (
+                   <button onClick={handleSave} disabled={loading || form.resultados_json.length === 0} className="flex-1 md:flex-none justify-center bg-indigo-600 text-white px-10 py-4 md:py-3 rounded-xl font-black shadow-xl flex items-center gap-2 hover:bg-indigo-700 transition-all uppercase tracking-widest text-base disabled:opacity-50">
+                     {loading ? <Loader2 className="animate-spin" size={20}/> : <Save size={20}/>} Registrar Laudo
+                   </button>
+                )}
+            </div>
           </div>
         </div>
       </div>

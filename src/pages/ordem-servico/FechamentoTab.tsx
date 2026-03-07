@@ -1,4 +1,6 @@
-import { CheckCircle, FileText, PenTool, ShieldCheck, Activity, Key, Search, Clock, Mail, Printer } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, FileText, PenTool, ShieldCheck, Activity, Key, Search, Clock, Mail, Printer, Loader2 } from 'lucide-react';
+import { supabase } from '../../supabaseClient';
 
 interface FechamentoTabProps {
   osForm: any;
@@ -6,12 +8,13 @@ interface FechamentoTabProps {
   apontamentos: any[];
   onFinalize: () => void;
   status: string;
-  onPrint: () => void; // <-- Nova propriedade para disparar o PDF
+  onPrint: () => void; 
   showToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, status, onPrint, showToast }: FechamentoTabProps) {
-  const isReadOnly = status === 'Concluída';
+  const [loading, setLoading] = useState(false);
+  const isReadOnly = status === 'Concluída' || status === 'Finalizada';
 
   const temApontamento = apontamentos.length > 0;
   const temDiagnostico = !!osForm.falha_constatada && osForm.falha_constatada.trim().length > 5;
@@ -20,22 +23,43 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
   
   const podeFinalizar = temApontamento && relatorioOk;
 
-  // FUNÇÃO DE E-MAIL OPCIONAL
+  // 🚀 O NOVO MOTOR DE SALVAMENTO E ENCERRAMENTO
+  const handleFinalizarCustom = async () => {
+      setLoading(true);
+      try {
+          // 1. Salva os textos e muda o status no banco de dados de uma vez só
+          const { error } = await supabase.from('ordens_servico').update({
+              falha_constatada: osForm.falha_constatada,
+              causa_raiz: osForm.causa_raiz,
+              solucao_aplicada: osForm.solucao_aplicada,
+              status: 'Concluída',
+              data_fechamento: new Date().toISOString()
+          }).eq('id', osForm.id);
+
+          if (error) throw error;
+
+          if (showToast) showToast('O.S. Finalizada com sucesso!', 'success');
+          onFinalize(); // Avisa a página principal para atualizar as abas
+      } catch (e) {
+          if (showToast) showToast('Erro ao salvar no banco de dados.', 'error');
+      } finally {
+          setLoading(false);
+      }
+  };
+
   const handleSendEmail = () => {
-     const email = osForm.solicitante_email || '';
+     const email = osForm.cliente?.email_contato || osForm.cliente?.email || '';
      if (!email && showToast) {
-         showToast('Atenção: E-mail do cliente não está preenchido na Visão Geral. Preencha no seu gerenciador de e-mail.', 'info');
+         showToast('Atenção: E-mail do cliente não está preenchido no cadastro.', 'info');
      }
      
-     // AQUI ESTÁ A MÁGICA: O link usa o id_publico
      const linkPrivado = `${window.location.origin}/view/os/${osForm.id_publico}`;
-     
      const assunto = encodeURIComponent(`Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`);
-     const corpo = encodeURIComponent(`Olá ${osForm.solicitante_nome || 'Cliente'},\n\nInformamos que a sua Ordem de Serviço #${osForm.id} referente ao equipamento TAG: ${osForm.equipamento?.tag || ''} foi concluída com sucesso.\n\nPara visualizar o relatório técnico digital completo e baixar o seu certificado, acesse o link seguro abaixo:\n\n🔗 Acessar Relatório: ${linkPrivado}\n\nAtenciosamente,\nEquipe Técnica Atlasum`);
+     const corpo = encodeURIComponent(`Olá ${osForm.solicitante_nome || 'Cliente'},\n\nInformamos que a sua Ordem de Serviço #${osForm.id} referente ao equipamento TAG: ${osForm.equipamento?.tag || ''} foi concluída com sucesso.\n\nPara visualizar o relatório técnico digital completo e baixar o seu certificado, acesse o link seguro abaixo:\n\n🔗 Acessar Relatório: ${linkPrivado}\n\nAtenciosamente,\nEquipe Técnica`);
      
-     // Abre o Outlook/Gmail do usuário
      window.open(`mailto:${email}?subject=${assunto}&body=${corpo}`);
   };
+
   return (
     <div className="animate-fadeIn max-w-5xl mx-auto space-y-8">
       
@@ -45,7 +69,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
       </div>
 
       <div className="space-y-6">
-         {/* DIAGNÓSTICO */}
          <div className="bg-theme-card border border-theme p-6 rounded-3xl shadow-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
             <label className="text-xs font-black uppercase text-blue-600 flex items-center gap-2 mb-3">
@@ -61,7 +84,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
          </div>
 
          <div className="grid md:grid-cols-2 gap-6">
-             {/* CAUSA RAIZ */}
              <div className="bg-theme-card border border-theme p-6 rounded-3xl shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                 <label className="text-xs font-black uppercase text-amber-600 flex items-center gap-2 mb-3">
@@ -76,7 +98,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
                 />
              </div>
 
-             {/* SOLUÇÃO */}
              <div className="bg-theme-card border border-theme p-6 rounded-3xl shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
                 <label className="text-xs font-black uppercase text-emerald-600 flex items-center gap-2 mb-3">
@@ -93,7 +114,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
          </div>
       </div>
 
-      {/* TELA DE SUCESSO (MOSTRADA QUANDO A OS É ENCERRADA) */}
       {isReadOnly ? (
          <div className="mt-8 bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800/50 p-8 rounded-[32px] text-center shadow-sm animate-fadeIn">
             <CheckCircle size={48} className="text-emerald-500 mx-auto mb-4"/>
@@ -111,7 +131,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
          </div>
       ) : (
          <>
-            {/* PAINEL DE VALIDAÇÃO (MOSTRADO ANTES DE ENCERRAR) */}
             <div className="bg-theme-page/50 border border-theme p-8 rounded-[32px] mt-8 shadow-inner">
               <h3 className="text-xs font-black uppercase text-theme-muted tracking-widest mb-6">Auditoria Interna de Qualidade</h3>
               <div className="grid md:grid-cols-3 gap-4">
@@ -143,14 +162,15 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
               </div>
             </div>
 
-            {/* BOTÃO MESTRE */}
             <div className="flex flex-col items-center justify-center pt-4">
                {podeFinalizar ? (
                   <button 
-                     onClick={onFinalize} 
-                     className="bg-primary-theme text-white text-lg font-black uppercase tracking-widest py-6 px-12 rounded-[24px] shadow-2xl shadow-primary-theme/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3"
+                     onClick={handleFinalizarCustom} 
+                     disabled={loading}
+                     className="bg-primary-theme text-white text-lg font-black uppercase tracking-widest py-6 px-12 rounded-[24px] shadow-2xl shadow-primary-theme/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-3 disabled:opacity-50"
                   >
-                     <CheckCircle size={24}/> ENCERRAR E SELAR ORDEM DE SERVIÇO
+                     {loading ? <Loader2 size={24} className="animate-spin"/> : <CheckCircle size={24}/>} 
+                     ENCERRAR E SELAR ORDEM DE SERVIÇO
                   </button>
                ) : (
                   <div className="text-center p-6 bg-theme-card rounded-3xl border border-rose-200 dark:border-rose-900/30 w-full max-w-md flex flex-col items-center shadow-sm">

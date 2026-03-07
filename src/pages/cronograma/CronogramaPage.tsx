@@ -79,12 +79,12 @@ export function CronogramaPage() {
     initTenant();
   }, []);
 
-  // 🚀 2. BUSCA BLINDADA TOTAL
+  // 🚀 2. MOTOR DO CRONOGRAMA: LUPA ATUALIZADA PARA O NOVO DICIONÁRIO
   const fetchData = async (tId: number) => {
     if (tId === -1) return;
     setLoading(true);
     try {
-      // 1. Busca Planos PUROS (Sem Join para evitar erro do Supabase)
+      // 1. Busca Planos PUROS
       const { data: planosData } = await supabase
         .from('cronograma_planos')
         .select('*')
@@ -98,49 +98,54 @@ export function CronogramaPage() {
         .eq('tenant_id', tId)
         .order('data_programada', { ascending: true });
 
-      // 3. Busca Auxiliares
-      const { data: equipData } = await supabase.from('equipamentos').select('*').eq('tenant_id', tId);
+      // 3. Busca Auxiliares com o DICIONÁRIO NOVO (dict_modelos)
+      const { data: equipData } = await supabase
+          .from('equipamentos')
+          .select('id, tag, nome, tecnologia_id, cliente_id, dict_modelos(*, dict_tecnologias(nome), dict_fabricantes(nome))')
+          .eq('tenant_id', tId);
+          
       const { data: tecData } = await supabase.from('tecnologias').select('id, nome, criticidade').eq('tenant_id', tId);
       const { data: cliData } = await supabase.from('clientes').select('id, nome_fantasia').eq('tenant_id', tId);
 
-      // 4. HIDRATAÇÃO MANUAL (O Segredo para não quebrar a tela)
-      
-      // Hidratando os Planos com os nomes dos clientes
+      // 4. HIDRATAÇÃO DO CRONOGRAMA
       const planosCompletos = (planosData || []).map((plano: any) => {
          const clienteDoPlano = (cliData || []).find((c: any) => c.id === plano.cliente_id);
-         return {
-            ...plano,
-            clientes: { nome_fantasia: clienteDoPlano ? clienteDoPlano.nome_fantasia : 'Cliente Não Encontrado' }
-         };
+         return { ...plano, clientes: { nome_fantasia: clienteDoPlano ? clienteDoPlano.nome_fantasia : 'Cliente Não Encontrado' } };
       });
 
-      // Hidratando os Itens do Cronograma
       const itensCompletos = (cronoData || []).map((item: any) => {
-          const equip = (equipData || []).find((e: any) => e.id === item.equipamento_id);
-          
-          let tecObj = { nome: 'N/A', criticidade: 'N/A' };
-          let cliObj = { nome_fantasia: 'N/A' };
+         const equip = (equipData || []).find((e: any) => e.id === item.equipamento_id);
+         
+         let tecObj = { nome: 'N/A', criticidade: 'N/A' };
+         let cliObj = { nome_fantasia: 'N/A' };
+         let equipNome = 'Equip. Desconhecido';
 
-          if (equip) {
-              const t = (tecData || []).find((x: any) => x.id === equip.tecnologia_id);
-              if (t) tecObj = t;
-              
-              const c = (cliData || []).find((x: any) => x.id === equip.cliente_id);
-              if (c) cliObj = c;
-          }
+         if (equip) {
+             // Tratamento do Dicionário Novo vs Antigo
+             if (equip.dict_modelos) {
+                 tecObj = { nome: equip.dict_modelos.dict_tecnologias?.nome || 'N/A', criticidade: equip.classe_risco || 'N/A' };
+                 equipNome = equip.nome || tecObj.nome;
+             } else {
+                 const t = (tecData || []).find((x: any) => x.id === equip.tecnologia_id);
+                 if (t) tecObj = t;
+                 equipNome = equip.nome || tecObj.nome;
+             }
+             
+             const c = (cliData || []).find((x: any) => x.id === equip.cliente_id);
+             if (c) cliObj = c;
+         }
 
-          return {
-              ...item,
-              equipamentos: equip ? {
-                  ...equip,
-                  tecnologias: tecObj,
-                  clientes: cliObj
-              } : { 
-                  tag: 'Equip. Desconhecido', 
-                  clientes: cliObj,
-                  tecnologias: tecObj 
-              }
-          };
+         return {
+             ...item,
+             equipamentos: equip ? {
+                 ...equip,
+                 nome: equipNome,
+                 tecnologias: tecObj,
+                 clientes: cliObj
+             } : { 
+                 tag: 'Equip. Desconhecido', nome: equipNome, clientes: cliObj, tecnologias: tecObj 
+             }
+         };
       });
 
       setPlanosRaw(planosCompletos);
@@ -175,13 +180,7 @@ export function CronogramaPage() {
       }
 
       return {
-        ...plano,
-        total,
-        concluidos,
-        pendentes,
-        atrasados,
-        highRiskCount,
-        proximaData,
+        ...plano, total, concluidos, pendentes, atrasados, highRiskCount, proximaData,
         progresso: total > 0 ? Math.round((concluidos / total) * 100) : 0
       };
     });
@@ -189,7 +188,6 @@ export function CronogramaPage() {
 
   const activeItems = useMemo(() => {
      if (viewLevel === 'plans' || !activePlan) return [];
-     
      return itensRaw.filter(item => {
         const matchPlan = item.plano_id === activePlan.id;
         const matchStatus = !filtroStatus || item.status === filtroStatus;
@@ -230,15 +228,11 @@ export function CronogramaPage() {
 
      setLoading(true);
      try {
-        await supabase.from('cronogramas').delete().eq('plano_id', activePlan.id).eq('tenant_id', tenantId);
-        await supabase.from('cronograma_planos').delete().eq('id', activePlan.id).eq('tenant_id', tenantId);
-        handleBackToPlans();
-        fetchData(tenantId);
-     } catch (e: any) {
-        alert('Erro ao excluir: ' + e.message);
-     } finally {
-        setLoading(false);
-     }
+       await supabase.from('cronogramas').delete().eq('plano_id', activePlan.id).eq('tenant_id', tenantId);
+       await supabase.from('cronograma_planos').delete().eq('id', activePlan.id).eq('tenant_id', tenantId);
+       handleBackToPlans();
+       fetchData(tenantId);
+     } catch (e: any) { alert('Erro ao excluir: ' + e.message); } finally { setLoading(false); }
   };
 
   if (!tenantId) {
@@ -247,8 +241,6 @@ export function CronogramaPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-[1920px] mx-auto min-h-screen animate-fadeIn">
-      
-      {/* HEADER RESTAURADO */}
       {viewLevel === 'plans' && (
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
             <div>
@@ -266,24 +258,16 @@ export function CronogramaPage() {
          </div>
       )}
 
-      {/* NAVEGAÇÃO DE DETALHES */}
       {viewLevel === 'details' && (
           <nav className="flex items-center gap-2 text-sm text-slate-500 mb-6 font-medium">
-             <button onClick={handleBackToPlans} className="hover:text-blue-600 flex items-center gap-1 transition-colors">
-                <Home size={14}/> Gestão
-             </button>
+             <button onClick={handleBackToPlans} className="hover:text-blue-600 flex items-center gap-1 transition-colors"><Home size={14}/> Gestão</button>
              <ChevronRight size={14} className="opacity-50"/>
-             <button onClick={handleBackToPlans} className="hover:text-blue-600 transition-colors">
-                Cronogramas
-             </button>
+             <button onClick={handleBackToPlans} className="hover:text-blue-600 transition-colors">Cronogramas</button>
              <ChevronRight size={14} className="opacity-50"/>
-             <span className="text-blue-600 font-bold flex items-center gap-1">
-                <FileText size={14}/> {activePlan?.nome}
-             </span>
+             <span className="text-blue-600 font-bold flex items-center gap-1"><FileText size={14}/> {activePlan?.nome}</span>
           </nav>
       )}
 
-      {/* VIEWS */}
       {viewLevel === 'plans' ? (
          <div className="animate-slideIn">
             {loading ? (

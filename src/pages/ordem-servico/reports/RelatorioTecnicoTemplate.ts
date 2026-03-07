@@ -2,32 +2,107 @@
  * ============================================================================
  * MOTOR DE RELATÓRIO TÉCNICO OS - TEMA VISUAL NANO (AZUL & VERDE)
  * ============================================================================
- * Auditoria: Correção do posicionamento das Assinaturas (evita sobreposição).
+ * Auditoria: Injeção de Status, Data de Fechamento e Valores Financeiros.
  */
 
-const gerarCorpoDaOS = (dados: any) => {
-  const { os, apontamentos, checklistData, logoUrl, nomeEmpresa } = dados;
+const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
+  const os = arg1.os ? arg1.os : arg1;
+  const apontamentos = arg1.apontamentos ? arg1.apontamentos : (arg2 || []);
+  const pecas = arg1.pecas ? arg1.pecas : (os.pecas || []);
+  const checklistData = arg1.checklistData ? arg1.checklistData : os.checklistData;
+  
+  const config = arg3 || {};
+  const logoUrl = arg1.logoUrl || config.logo_url;
+  const nomeEmpresa = arg1.nomeEmpresa || config.nome_empresa || config.nome_fantasia;
 
   const eq = os?.equipamentos || os?.equipamento || {};
   const cli = eq?.clientes || eq?.cliente || os?.clientes || os?.cliente || {};
-  const tec = eq?.tecnologias || eq?.tecnologia || {};
+  const tec = eq?.tecnologias || eq?.tecnologia || os?.tecnologias || os?.tecnologia || {};
 
   const equipNome = os?.equipamento_nome || tec?.nome || eq?.nome || 'Equipamento Hospitalar';
   const equipTag = eq?.tag || os?.equipamento_tag || 'S/ TAG';
-  const equipModelo = eq?.modelo || os?.equipamento_modelo || '-';
+  const equipModelo = eq?.modelo || tec?.modelo || os?.equipamento_modelo || '-';
   const equipSerie = eq?.numero_serie || eq?.n_serie || os?.equipamento_serie || '-';
-  const clienteNome = cli?.nome_fantasia || cli?.nome || 'Unidade não identificada';
+  const clienteNome = cli?.nome_fantasia || cli?.razao_social || cli?.nome || 'Unidade não identificada';
 
+  // 🚀 DADOS DE STATUS E DATAS
+  const dataAbertura = os?.created_at || os?.data_abertura ? new Date(os.created_at || os.data_abertura).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+  const dataFechamento = os?.data_fechamento ? new Date(os.data_fechamento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+  const statusOS = os?.status || 'Pendente';
+  
+  const corStatus = statusOS === 'Concluída' || statusOS === 'Finalizada' ? 'background:#dcfce7; color:#166534; border-color:#bbf7d0;' : 'background:#fef08a; color:#854d0e; border-color:#fde047;';
+
+  const tipoOS = os?.tipo || 'Manutenção';
   const nomeTecnicoFallback = (apontamentos && apontamentos.length > 0) ? apontamentos[0].tecnico_nome : 'Executor não identificado';
   const nomeTecnicoFinal = os.tecnico_nome || nomeTecnicoFallback;
 
   let sectionCounter = 3;
 
+  // 🚀 TABELA DE PEÇAS COM VALORES FINANCEIROS
+  let pecasHtml = '';
+  if (pecas && pecas.length > 0) {
+    let valorTotalPecas = 0;
+
+    const rowsPecas = pecas.map((p: any) => {
+      const item = p.estoque_itens || {};
+      const isServico = item.categoria === 'Serviço';
+      const badge = isServico ? `<span style="background:#e0e7ff; color:#3730a3; padding:2px 6px; border-radius:4px; font-size:6.5pt; margin-right:6px; font-weight:bold; letter-spacing:0.5px;">SERVIÇO</span>` : '';
+      
+      const valUnit = item.valor_venda || 0;
+      const valTot = valUnit * p.quantidade;
+      valorTotalPecas += valTot;
+
+      return `<tr class="tr-stripe">
+                <td>${item.codigo_sku || '-'}</td>
+                <td>${badge}${item.nome || 'Item não identificado'}</td>
+                <td style="text-align:center; font-weight:bold;">${p.quantidade} ${item.unidade_medida || 'Un'}</td>
+                <td style="text-align:right;">R$ ${Number(valUnit).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align:right; font-weight:bold; color:#0f172a;">R$ ${Number(valTot).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              </tr>`;
+    }).join('');
+    
+    pecasHtml = `
+    <div class="box box-blue">
+      <div class="box-h h-blue">${sectionCounter}. Serviços Adicionais e Peças Aplicadas</div>
+      <div class="box-b" style="padding:0">
+        <table>
+          <thead>
+             <tr>
+                <th class="th-blue" style="width:15%">Cód / Ref</th>
+                <th class="th-blue">Descrição do Serviço / Material</th>
+                <th class="th-blue" style="text-align:center; width:8%">Qtd</th>
+                <th class="th-blue" style="text-align:right; width:15%">V. Unit</th>
+                <th class="th-blue" style="text-align:right; width:15%">V. Total</th>
+             </tr>
+          </thead>
+          <tbody>
+             ${rowsPecas}
+             <tr>
+                <td colspan="4" style="text-align:right; font-weight:900; font-size:9pt; padding:10px;">SUBTOTAL MATERIAIS/SERVIÇOS:</td>
+                <td style="text-align:right; font-weight:900; font-size:10pt; color:#1e3a8a; padding:10px; background:#f0f9ff;">R$ ${Number(valorTotalPecas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+             </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+    sectionCounter++;
+  }
+
+  // 🚀 TABELA DE CHECKLIST (AGORA COM OS DADOS CARREGADOS)
   let checklistHtml = '';
   if (checklistData && checklistData.perguntas && checklistData.perguntas.length > 0) {
     const rows = checklistData.perguntas.map((p: any, i: number) => {
-      const resp = checklistData.respostas?.[i] || 'N/A';
-      return `<tr class="tr-stripe"><td style="width:80%">${p.texto}</td><td style="text-align:center; font-weight:bold;">${resp}</td></tr>`;
+      // Procura a resposta no array ou usa 'N/A'
+      let respStr = 'N/A';
+      if (Array.isArray(checklistData.respostas)) {
+         const respObj = checklistData.respostas.find((r:any) => r.perguntaIndex === i || r.pergunta_id === p.id);
+         if (respObj) respStr = respObj.resposta;
+         else if (typeof checklistData.respostas[i] === 'string') respStr = checklistData.respostas[i];
+      }
+      
+      const corResposta = respStr === 'Conforme' || respStr === 'OK' ? 'color:#16a34a;' : (respStr === 'Não Conforme' || respStr === 'Falha' ? 'color:#dc2626;' : 'color:#64748b;');
+
+      return `<tr class="tr-stripe"><td style="width:80%">${p.texto}</td><td style="text-align:center; font-weight:900; ${corResposta}">${respStr}</td></tr>`;
     }).join('');
     
     checklistHtml = `
@@ -47,7 +122,6 @@ const gerarCorpoDaOS = (dados: any) => {
   try {
     const anexosRaw = os?.anexos;
     const lista = typeof anexosRaw === 'string' ? JSON.parse(anexosRaw) : (Array.isArray(anexosRaw) ? anexosRaw : []);
-    
     if (lista.length > 0) {
       const imagensProcessadas = lista.map((u: any) => {
           const urlStr = typeof u === 'string' ? u : (u?.url || u?.path || '');
@@ -102,12 +176,21 @@ const gerarCorpoDaOS = (dados: any) => {
         </div>
       </div>
 
-      <div class="grid-2">
+      <div class="grid-3">
         <div class="box box-blue">
-          <div class="box-h h-blue">Unidade / Solicitante</div>
+          <div class="box-h h-blue">Ordem de Serviço</div>
+          <div class="box-b b-blue">
+            <div class="row"><span class="lbl">Abertura:</span> <div class="val">${dataAbertura}</div></div>
+            <div class="row"><span class="lbl">Fechamento:</span> <div class="val">${dataFechamento}</div></div>
+            <div class="row"><span class="lbl">Status:</span> <div class="val" style="${corStatus}">${statusOS}</div></div>
+          </div>
+        </div>
+        
+        <div class="box box-blue">
+          <div class="box-h h-blue">Local / Contato</div>
           <div class="box-b b-blue">
             <div class="row"><span class="lbl">Unidade:</span> <div class="val">${clienteNome}</div></div>
-            <div class="row"><span class="lbl">Solicitante:</span> <div class="val">${os.solicitante_nome || '-'}</div></div>
+            <div class="row"><span class="lbl">Contato:</span> <div class="val">${os.solicitante_nome || '-'}</div></div>
             <div class="row"><span class="lbl">Setor:</span> <div class="val">${os.solicitante_setor || eq.setor || '-'}</div></div>
           </div>
         </div>
@@ -115,8 +198,8 @@ const gerarCorpoDaOS = (dados: any) => {
         <div class="box box-blue">
           <div class="box-h h-blue">Ativo Hospitalar</div>
           <div class="box-b b-blue">
-            <div class="row"><span class="lbl">Equipamento:</span> <div class="val val-green">${equipNome}</div></div>
-            <div class="row"><span class="lbl">Modelo/Sér:</span> <div class="val val-green">${equipModelo} | ${equipSerie}</div></div>
+            <div class="row"><span class="lbl">Equipam.:</span> <div class="val val-green">${equipNome}</div></div>
+            <div class="row"><span class="lbl">Mod/Sér:</span> <div class="val val-green">${equipModelo} | ${equipSerie}</div></div>
             <div class="row"><span class="lbl">TAG:</span> <div class="val val-green">${equipTag}</div></div>
           </div>
         </div>
@@ -125,10 +208,10 @@ const gerarCorpoDaOS = (dados: any) => {
       <div class="box box-blue">
         <div class="box-h h-blue">1. Diagnóstico e Intervenção</div>
         <div class="box-b">
-          <span class="lbl" style="color:#64748b">Descrição do Problema / Motivo do Chamado:</span>
+          <span class="lbl-section" style="color:#64748b">Descrição do Problema / Motivo do Chamado:</span>
           <div class="txt-block">${os.descricao_problema || os.descricao || 'Não informado'}</div>
           <div style="margin-top:12px">
-            <span class="lbl" style="color:#16a34a">Solução Técnica Aplicada:</span>
+            <span class="lbl-section" style="color:#16a34a">Solução Técnica Aplicada:</span>
             <div class="txt-block" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534; font-weight:bold;">${os.solucao_aplicada || 'Serviço em execução'}</div>
           </div>
         </div>
@@ -144,6 +227,7 @@ const gerarCorpoDaOS = (dados: any) => {
         </div>
       </div>
 
+      ${pecasHtml} 
       ${checklistHtml}
       ${imagensHtml}
 
@@ -205,20 +289,21 @@ const styles = `
     .os-badge .num { font-size: 16pt; font-weight: 900; color: #1e3a8a; line-height: 1; }
     .os-badge .date { font-size: 7pt; color: #64748b; margin-top: 2px; font-weight: bold; text-transform: uppercase; }
 
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 
     .box { border-radius: 8px; overflow: hidden; margin-bottom: 12px; border: 1.5px solid #cbd5e1; }
     .box-blue { border-color: #3b82f6; }
     .box-green { border-color: #22c55e; }
-    .box-h { padding: 6px 12px; font-weight: 900; font-size: 8.5pt; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; }
+    .box-h { padding: 6px 10px; font-weight: 900; font-size: 8pt; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; }
     .h-blue { background: #0284c7; }
     .h-green { background: #16a34a; }
-    .box-b { padding: 10px 12px; background: #fff; }
+    .box-b { padding: 8px 10px; background: #fff; }
     .b-blue { background: #f0f9ff; }
 
-    .row { display: flex; align-items: center; margin-bottom: 5px; }
-    .lbl { width: 95px; font-weight: 900; color: #334155; font-size: 7.5pt; text-transform: uppercase; }
-    .val { flex: 1; background: #e0f2fe; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-weight: 800; font-size: 8pt; border: 1px solid #bae6fd; text-transform: uppercase; }
+    .row { display: flex; align-items: center; margin-bottom: 4px; }
+    .lbl { width: 65px; font-weight: 900; color: #334155; font-size: 6.5pt; text-transform: uppercase; }
+    .lbl-section { font-weight: 900; font-size: 7.5pt; text-transform: uppercase; }
+    .val { flex: 1; background: #e0f2fe; color: #0f172a; padding: 3px 6px; border-radius: 4px; font-weight: 800; font-size: 6.5pt; border: 1px solid #bae6fd; text-transform: uppercase; line-height: 1.2;}
     .val-green { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
     .txt-block { padding: 10px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 4px; white-space: pre-wrap; font-size: 8.5pt; color: #0f172a; line-height: 1.5; }
 
@@ -234,7 +319,6 @@ const styles = `
     .ev-item img { width: 100%; height: 160px; object-fit: contain; border-radius: 4px; background: #f8fafc; }
     .ev-cap { font-size: 7pt; font-weight: bold; margin-top: 6px; text-transform: uppercase; color: #64748b; }
 
-    /* CSS CORRIGIDO DAS ASSINATURAS */
     .sigs { display: flex; justify-content: space-around; margin-top: 40px; page-break-inside: avoid; }
     .sig-box { width: 42%; text-align: center; }
     .sig-wrapper { height: 70px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
@@ -253,18 +337,19 @@ const styles = `
   </style>
 `;
 
-export const imprimirRelatorio = (dados: any) => {
+export const imprimirRelatorio = (arg1: any, arg2?: any, arg3?: any) => {
   const win = window.open('', '_blank');
   if (!win) return;
-  win.document.write(`<html><head><title>OS #${dados.os.id}</title>${styles}</head><body>${gerarCorpoDaOS(dados)}<script>setTimeout(()=>window.print(),800)</script></body></html>`);
+  const os = arg1.os || arg1;
+  win.document.write(`<html><head><title>OS #${os.id}</title>${styles}</head><body>${gerarCorpoDaOS(arg1, arg2, arg3)}<script>setTimeout(()=>window.print(),800)</script></body></html>`);
   win.document.close();
 };
 
-export const imprimirRelatoriosEmLote = (lista: any[]) => {
+export const imprimirRelatoriosEmLote = (lista: any[], config?: any) => {
   const win = window.open('', '_blank');
   if (!win) return;
   win.document.write(`<html><head><title>Lote Atlas</title>${styles}</head><body>`);
-  lista.forEach(d => win.document.write(gerarCorpoDaOS(d)));
+  lista.forEach(d => win.document.write(gerarCorpoDaOS(d, d.apontamentos, config)));
   win.document.write(`<script>setTimeout(()=>window.print(),1500)</script></body></html>`);
   win.document.close();
 };

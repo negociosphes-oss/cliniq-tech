@@ -25,16 +25,20 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
   const carregarChecklist = async () => {
     setLoading(true);
     try {
+      // 🚀 ALINHAMENTO COM SEU BANCO DE DADOS
       const { data: execExistente } = await supabase.from('os_checklists_execucao')
         .select('*').eq('ordem_servico_id', osId).maybeSingle();
 
       if (execExistente) {
         const { data: mod } = await supabase.from('checklists_biblioteca').select('*').eq('id', execExistente.checklist_id).single();
         setModelo(mod);
-        setRespostas(typeof execExistente.respostas === 'string' ? JSON.parse(execExistente.respostas) : execExistente.respostas || {});
+        
+        // Usa a coluna exata do seu banco: respostas_json
+        const respJson = execExistente.respostas_json || {};
+        setRespostas(typeof respJson === 'string' ? JSON.parse(respJson) : respJson);
         setObservacao(execExistente.observacoes || '');
         setExecucaoId(execExistente.id);
-        setStatus(execExistente.status);
+        setStatus(execExistente.status || 'Rascunho');
         setOrigem('Manual');
       } else {
         const { data: eq } = await supabase.from('equipamentos').select('tecnologia_id').eq('id', equipamentoId).single();
@@ -72,7 +76,7 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
 
         if (!modeloEncontrado) {
              const { data: modelos } = await supabase.from('checklists_biblioteca').select('*');
-             const match = modelos?.find(m => String(m.nome || '').toLowerCase().includes(String(tipoServico || '').toLowerCase()));
+             const match = modelos?.find(m => String(m.titulo || '').toLowerCase().includes(String(tipoServico || '').toLowerCase()));
              if (match) {
                  modeloEncontrado = match;
                  origemEncontrada = 'Generico';
@@ -83,9 +87,6 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             setModelo(modeloEncontrado);
             setOrigem(origemEncontrada);
             
-            // 🛡️ BLINDAGEM DO PAYLOAD (Evita o erro PGRST204)
-            // Enviamos APENAS os dados vitais de relacionamento. 
-            // Retiramos o campo "respostas: null" que estava engasgando o Supabase.
             const payload = {
                 ordem_servico_id: osId,
                 checklist_id: modeloEncontrado.id,
@@ -96,7 +97,6 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             
             if (error) {
                 console.error("Erro ao criar execução:", error);
-                showToast("Erro ao vincular checklist.", "error");
             } else if (newExec) {
                 setExecucaoId(newExec.id);
             }
@@ -119,11 +119,12 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
     setLoading(true);
 
     const novoStatus = finalizar ? 'Concluído' : 'Em Andamento';
+    
+    // 🚀 BLINDAGEM: Usamos o nome exato da sua coluna: respostas_json
     const payload = {
-      respostas: JSON.stringify(respostas),
+      respostas_json: respostas, 
       observacoes: observacao,
-      status: novoStatus,
-      data_conclusao: finalizar ? new Date().toISOString() : null
+      status: novoStatus
     };
 
     try {
@@ -157,7 +158,14 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
   );
 
   const isLocked = status === 'Concluído' || status === 'Finalizado';
-  const perguntas = typeof modelo.perguntas === 'string' ? JSON.parse(modelo.perguntas) : (modelo.perguntas || modelo.itens_configuracao || []);
+  
+  // 🚀 ALINHAMENTO COM SEU BANCO: Lendo a coluna itens_configuracao
+  let perguntas: any[] = [];
+  if (modelo.itens_configuracao) {
+      perguntas = typeof modelo.itens_configuracao === 'string' ? JSON.parse(modelo.itens_configuracao) : modelo.itens_configuracao;
+  } else if (modelo.perguntas) {
+      perguntas = typeof modelo.perguntas === 'string' ? JSON.parse(modelo.perguntas) : modelo.perguntas;
+  }
 
   return (
     <div className="max-w-5xl mx-auto animate-fadeIn pb-10">
@@ -168,7 +176,7 @@ export function ChecklistTab({ osId, equipamentoId, tipoServico, showToast }: Ch
             </div>
             <div>
                 <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-black text-theme-main leading-tight">{modelo.nome || modelo.titulo}</h3>
+                    <h3 className="text-xl font-black text-theme-main leading-tight">{modelo.titulo || modelo.nome}</h3>
                     {origem === 'Generico' && <span className="bg-theme-card text-theme-muted border border-theme text-[10px] px-2 py-0.5 rounded-full font-black uppercase flex items-center gap-1"><Zap size={10}/> Padrão</span>}
                     {origem === 'Especifico' && <span className="bg-primary-theme text-white text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Específico</span>}
                 </div>

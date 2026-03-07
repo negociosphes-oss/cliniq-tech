@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
-  LayoutDashboard, Wrench, Monitor, LogOut, Megaphone, 
-  ClipboardList, Calendar, Scale, BookOpen, Settings, 
-  Sun, Moon, ChevronLeft, ChevronRight, FileCheck,
-  Calculator, PieChart, Briefcase, DollarSign, Cpu, Users, Globe // <-- IMPORT ADICIONADO AQUI
+  LayoutDashboard, Megaphone, ClipboardList, Monitor, Package, 
+  Cpu, Calendar, Scale, FileCheck, BookOpen, Briefcase, Calculator, 
+  DollarSign, Users, Settings, Globe, LogOut, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import type { Config, Usuario } from '../types';
 import { ATLAS_THEMES } from '../constants/themes'; 
@@ -14,8 +13,6 @@ interface SidebarProps {
   view: string;
   setView: (path: string) => void;
   onLogout: () => void;
-  darkMode: boolean;
-  setDarkMode: (mode: boolean) => void;
   isCollapsed: boolean;
   toggleSidebar: () => void;
   themeColor: string;
@@ -27,11 +24,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ 
-  view, setView, onLogout, darkMode, setDarkMode, isCollapsed, toggleSidebar, 
+  view, setView, onLogout, isCollapsed, toggleSidebar, 
   themeColor, setThemeColor, config, user, isMobileOpen, setIsMobileOpen 
 }: SidebarProps) {
   const [empresaConfig, setEmpresaConfig] = useState<any>(null);
-  
   const [permissoesDinamicas, setPermissoesDinamicas] = useState<any[]>([]);
 
   useEffect(() => {
@@ -45,9 +41,7 @@ export function Sidebar({
   useEffect(() => {
     const carregarPermissoes = async () => {
         if (!user || !config?.id) return;
-        
         const role = user.nivel_acesso || (user.cargo?.toLowerCase().includes('admin') || user.nome === 'CEO / Admin' ? 'master' : 'usuario');
-        
         if (role === 'master') return;
 
         const { data, error } = await supabase
@@ -56,9 +50,7 @@ export function Sidebar({
             .eq('tenant_id', config.id)
             .eq('nivel_acesso', role);
         
-        if (!error && data) {
-            setPermissoesDinamicas(data);
-        }
+        if (!error && data) setPermissoesDinamicas(data);
     };
     carregarPermissoes();
   }, [user, config?.id]);
@@ -69,47 +61,37 @@ export function Sidebar({
   const handleThemeChange = (theme: any) => {
       setThemeColor(theme.primary);
       ThemeService.salvarNovoTema(theme.id, theme.primary);
-  };
-
-  const handleDarkToggle = () => {
-      const novoModo = !darkMode;
-      setDarkMode(novoModo);
-      ThemeService.aplicarTemaNoDOM(themeColor, novoModo);
+      // 🚀 Força sempre o modo claro (false) ao trocar a cor
+      ThemeService.aplicarTemaNoDOM(theme.primary, false);
   };
 
   const menuItems = [
-    { section: 'Visão Geral', id: 'painel', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'indicadores', label: 'BI & Analytics', icon: PieChart },
+    { section: 'Métricas & Gestão', id: 'painel', label: 'Painel Geral', icon: LayoutDashboard },
+    { id: 'indicadores', label: 'Indicadores (BI)', icon: PieChart },
 
-    { section: 'Operacional', id: 'novo-chamado', label: 'Novo Chamado', icon: Megaphone },
+    { section: 'Operação em Campo', id: 'novo-chamado', label: 'Novo Chamado', icon: Megaphone },
     { id: 'ordens', label: 'Ordens de Serviço', icon: ClipboardList },
     { id: 'equipamentos', label: 'Ativos & Inventário', icon: Monitor },
+
+    { section: 'Engenharia Clínica', id: 'cronograma', label: 'Plano Diretor', icon: Calendar },
+    { id: 'metrologia', label: 'Metrologia LIMS', icon: Scale },
+    { id: 'checklists', label: 'Checklists Técnicos', icon: FileCheck },
+    { id: 'manuais', label: 'Biblioteca Digital', icon: BookOpen },
+
+    { section: 'Administrativo', id: 'estoque', label: 'Gestão de Estoque', icon: Package },
     { id: 'tecnologias', label: 'Padrões & Modelos', icon: Cpu },
-
-    { section: 'Engenharia', id: 'cronograma', label: 'Plano Diretor', icon: Calendar },
-    { id: 'metrologia', label: 'LIMS Metrologia', icon: Scale },
-    { id: 'checklists', label: 'Smart Checklists', icon: FileCheck },
-    { id: 'manuais', label: 'Cloud Library', icon: BookOpen },
-
-    { section: 'Negócios', id: 'clientes', label: 'Clientes & CRM', icon: Briefcase },
+    { id: 'clientes', label: 'Clientes & CRM', icon: Briefcase },
     { id: 'orcamentos', label: 'Vendas & Propostas', icon: Calculator },
     { id: 'financeiro', label: 'Fluxo de Caixa', icon: DollarSign },
+    { id: 'equipe', label: 'Equipe Técnica', icon: Users },
 
-    { section: 'Equipe', id: 'equipe', label: 'Equipa Técnica', icon: Users },
     { section: 'Sistema', id: 'configuracoes', label: 'Configurações', icon: Settings },
-    
-    // 🚀 ITEM ADICIONADO: BOTÃO DO PAINEL SAAS (Ficará oculto para todos os clientes comuns)
-    { section: 'Proprietário SaaS', id: 'admin-geral', label: 'Admin Geral', icon: Globe },
+    { id: 'admin-geral', label: 'Admin Geral (SaaS)', icon: Globe },
   ];
 
   const temAcesso = (moduloId: string) => {
       const role = user?.nivel_acesso || (user?.cargo?.toLowerCase().includes('admin') || user?.nome === 'CEO / Admin' ? 'master' : 'usuario');
-      
-      // 🚀 BLINDAGEM DO BOTÃO VIP: Somente você, no seu ambiente matriz (ID 1) e sendo master, vê este botão.
-      if (moduloId === 'admin-geral') {
-          return config?.id === 1 && role === 'master';
-      }
-
+      if (moduloId === 'admin-geral') return config?.id === 1 && role === 'master';
       if (role === 'master') return true;
 
       const permDb = permissoesDinamicas.find(p => p.modulo_id === moduloId);
@@ -121,6 +103,7 @@ export function Sidebar({
           'novo-chamado': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
           'ordens': ['administrativo', 'gestor', 'tecnico', 'usuario'],
           'equipamentos': ['administrativo', 'gestor', 'tecnico', 'usuario'],
+          'estoque': ['administrativo', 'gestor', 'tecnico'],
           'tecnologias': ['gestor'],
           'cronograma': ['administrativo', 'gestor', 'tecnico'],
           'metrologia': ['gestor', 'tecnico'],
@@ -132,7 +115,6 @@ export function Sidebar({
           'equipe': ['administrativo', 'gestor'],
           'configuracoes': [] 
       };
-
       return regrasPadrao[moduloId]?.includes(role) || false;
   };
 
@@ -140,9 +122,7 @@ export function Sidebar({
 
   const handleMenuClick = (id: string) => {
       setView(id);
-      if (window.innerWidth < 768 && setIsMobileOpen) {
-          setIsMobileOpen(false);
-      }
+      if (window.innerWidth < 768 && setIsMobileOpen) setIsMobileOpen(false);
   };
 
   return (
@@ -155,7 +135,7 @@ export function Sidebar({
       )}
 
       <aside 
-        className={`fixed inset-y-0 left-0 z-[70] flex flex-col transition-all duration-500 bg-theme-card border-r border-theme shadow-2xl ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isCollapsed ? 'md:w-24 w-72' : 'w-72'}`}
+        className={`fixed inset-y-0 left-0 z-[70] flex flex-col transition-all duration-500 bg-theme-card border-r border-theme shadow-2xl md:shadow-none ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isCollapsed ? 'md:w-24 w-72' : 'w-72'}`}
       >
           <div className="h-24 flex items-center justify-between px-6 shrink-0 relative overflow-hidden">
               {(!isCollapsed || window.innerWidth < 768) ? (
@@ -170,8 +150,8 @@ export function Sidebar({
                         </div>
                     )}
                     <div className="flex flex-col justify-center">
-                      <h1 className="text-[16px] font-black text-theme-main tracking-tighter leading-tight">{companyName}</h1>
-                      <span className="text-[9px] font-black text-primary-theme uppercase tracking-[0.2em] opacity-80">Enterprise</span>
+                      <h1 className="text-[16px] font-black text-theme-main tracking-tighter leading-tight truncate w-36">{companyName}</h1>
+                      <span className="text-[9px] font-black text-primary-theme uppercase tracking-[0.2em] opacity-80">Eng. Clínica</span>
                     </div>
                 </div>
               ) : (
@@ -222,39 +202,24 @@ export function Sidebar({
               })}
           </nav>
 
-          <button 
-              onClick={toggleSidebar} 
-              className="hidden md:flex absolute -right-3 top-12 w-7 h-7 bg-theme-card border border-theme rounded-full items-center justify-center text-theme-muted hover:text-primary-theme shadow-xl z-50 transition-all active:scale-75"
-          >
+          <button onClick={toggleSidebar} className="hidden md:flex absolute -right-3 top-12 w-7 h-7 bg-theme-card border border-theme rounded-full items-center justify-center text-theme-muted hover:text-primary-theme shadow-xl z-50 transition-all active:scale-75">
               {isCollapsed ? <ChevronRight size={14} strokeWidth={3}/> : <ChevronLeft size={14} strokeWidth={3}/>}
           </button>
 
-          <div className="p-4 mt-auto">
+          <div className="p-4 mt-auto border-t border-theme">
               {(!isCollapsed || window.innerWidth < 768) && (
                 <div className="mb-4 animate-fadeIn">
-                  <div className="flex justify-between items-center bg-theme-page/50 backdrop-blur-md p-2 rounded-2xl border border-theme shadow-inner">
-                    <div className="flex gap-1.5 px-1">
+                  <div className="flex justify-center items-center bg-theme-page/50 backdrop-blur-md p-2 rounded-2xl border border-theme shadow-inner">
+                    <div className="flex gap-2 px-1">
                       {ATLAS_THEMES.map((theme) => (
-                        <button
-                          key={theme.id}
-                          onClick={() => handleThemeChange(theme)}
-                          className={`w-5 h-5 rounded-full transition-all duration-500 hover:scale-125 
-                            ${themeColor === theme.primary ? 'ring-2 ring-primary-theme ring-offset-2 scale-110 shadow-lg' : 'opacity-40 hover:opacity-100'}`}
-                          style={{ backgroundColor: theme.primary }}
-                        />
+                        <button key={theme.id} onClick={() => handleThemeChange(theme)} className={`w-5 h-5 rounded-full transition-all duration-500 hover:scale-125 ${themeColor === theme.primary ? 'ring-2 ring-primary-theme ring-offset-2 scale-110 shadow-lg' : 'opacity-40 hover:opacity-100'}`} style={{ backgroundColor: theme.primary }} />
                       ))}
                     </div>
-                    <div className="w-[1px] h-4 bg-theme-muted opacity-20 mx-1" />
-                    <button onClick={handleDarkToggle} className="p-2 text-theme-muted hover:text-primary-theme transition-all active:scale-75">
-                      {darkMode ? <Sun size={18} strokeWidth={1.5}/> : <Moon size={18} strokeWidth={1.5}/>}
-                    </button>
                   </div>
                 </div>
               )}
-              <div className="flex flex-col gap-2 mb-4 px-2 py-3 bg-theme-page/30 border border-theme rounded-2xl hidden md:flex">
-                  <span className="text-[9px] font-black uppercase text-theme-muted tracking-wider text-center">
-                      {user?.nivel_acesso || (user?.nome === 'CEO / Admin' ? 'master' : 'usuario')}
-                  </span>
+              <div className="flex flex-col gap-1 mb-4 px-2 py-3 bg-theme-page/30 border border-theme rounded-2xl hidden md:flex">
+                  <span className="text-[9px] font-black uppercase text-theme-muted tracking-wider text-center">{user?.nivel_acesso || (user?.nome === 'CEO / Admin' ? 'master' : 'usuario')}</span>
                   <span className="text-xs font-bold text-theme-main text-center truncate">{user?.nome || 'Utilizador'}</span>
               </div>
               <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-4 text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all duration-300 active:scale-95">
@@ -265,4 +230,10 @@ export function Sidebar({
       </aside>
     </>
   ) 
+}
+
+function PieChart(props: any) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth||2} strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+  );
 }

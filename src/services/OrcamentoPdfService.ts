@@ -3,246 +3,250 @@ import { format, parseISO } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Função auxiliar para converter a Logo (URL) em Base64
 const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
-    const res = await fetch(imageUrl);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.addEventListener("load", () => resolve(reader.result as string), false);
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(blob);
-    });
+    if (!imageUrl) return '';
+    try {
+        const res = await fetch(imageUrl);
+        const blob = await res.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(''); 
+            reader.readAsDataURL(blob);
+        });
+    } catch { return ''; }
 };
 
 export const OrcamentoPdfService = {
-  async gerar(orcamentoId: number) {
+  async gerar(orcamentoId: number, acao: 'view' | 'download' = 'view') {
     try {
-        // 1. Busca os dados
         const { data: orc } = await supabase.from('orçamentos').select('*, clientes(*)').eq('id', orcamentoId).single();
-        const { data: itens } = await supabase.from('orcamento_itens').select('*').eq('orcamento_id', orcamentoId);
-        const { data: config } = await supabase.from('configuracoes_empresa').select('*').eq('id', 1).maybeSingle();
-
         if (!orc) throw new Error("Orçamento não encontrado");
+
+        const { data: itens, error: itensError } = await supabase
+            .from('orcamento_itens')
+            .select('*, estoque_itens(imagem_url)')
+            .eq('orcamento_id', orcamentoId)
+            .order('id');
+            
+        if (itensError) console.error("Erro ao buscar itens:", itensError);
+
+        let config: any = {};
+        const { data: tenantData } = await supabase.from('empresas_inquilinas').select('*').eq('id', orc.tenant_id || 1).maybeSingle();
+        const { data: confData } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
+        config = { ...(tenantData || {}), ...(confData || {}) };
+
+        const itensComFotos = [];
+        for (const item of (itens || [])) {
+            let fotoBase64 = '';
+            if (item.estoque_itens?.imagem_url) {
+                fotoBase64 = await getBase64ImageFromUrl(item.estoque_itens.imagem_url);
+            }
+            itensComFotos.push({ ...item, fotoBase64 });
+        }
 
         const doc = new jsPDF();
         
-        // Cores da Marca (Padronizadas)
-        const colorPrimary = [30, 58, 138]; // Indigo 900
-        const colorSecondary = [71, 85, 105]; // Slate 600
+        const colorPrimary: [number, number, number] = [30, 58, 138]; 
+        const colorSecondary: [number, number, number] = [100, 116, 139]; 
         
-        // ==========================================
-        // 1. CABEÇALHO
-        // ==========================================
+        doc.setFillColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
+        doc.rect(0, 0, 210, 6, 'F'); 
+
         if (config?.logo_url) {
             try {
                 const logoBase64 = await getBase64ImageFromUrl(config.logo_url);
-                doc.addImage(logoBase64, 'PNG', 14, 15, 35, 15, '', 'FAST');
-            } catch (e) {
-                console.warn("Logo error", e);
-            }
+                const imgProps = doc.getImageProperties(logoBase64);
+                const targetHeight = 12;
+                const targetWidth = (imgProps.width * targetHeight) / imgProps.height;
+                const finalWidth = targetWidth > 50 ? 50 : targetWidth; 
+                const finalHeight = targetWidth > 50 ? (imgProps.height * 50) / imgProps.width : targetHeight;
+                doc.addImage(logoBase64, 'PNG', 14, 10, finalWidth, finalHeight, '', 'FAST');
+            } catch (e) { console.warn("Erro logo", e); }
         } else {
-            doc.setFontSize(20);
+            doc.setFontSize(18);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]); 
-            doc.text(config?.nome_empresa || 'ATLAS SYSTEM', 14, 25);
+            doc.text(config?.nome_empresa || 'ATLAS SYSTEM', 14, 22);
         }
 
-        doc.setFontSize(11);
+        doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(15, 23, 42); 
-        doc.text(config?.nome_empresa || 'ATLAS SYSTEM', 196, 18, { align: 'right' });
+        doc.text(config?.nome_empresa || 'ATLAS SYSTEM MEDICAL', 196, 16, { align: 'right' });
         
-        doc.setFontSize(9);
+        doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(colorSecondary[0], colorSecondary[1], colorSecondary[2]); 
-        doc.text(`CNPJ: ${config?.cnpj || 'Não informado'}`, 196, 23, { align: 'right' });
-        doc.text(config?.endereco_completo || 'Endereço não cadastrado', 196, 28, { align: 'right' });
-        
-        let headerY = 33;
-        if(config?.telefone) { doc.text(`Tel: ${config.telefone}`, 196, headerY, { align: 'right' }); headerY += 5; }
-        if(config?.email) { doc.text(config.email, 196, headerY, { align: 'right' }); }
+        doc.text(`CNPJ: ${config?.cnpj || '-'}`, 196, 21, { align: 'right' });
+        doc.text(config?.endereco_completo || config?.endereco || '', 196, 25, { align: 'right' });
+        if(config?.telefone) doc.text(`Tel: ${config.telefone}`, 196, 29, { align: 'right' });
+        if(config?.email) doc.text(config.email, 196, 33, { align: 'right' });
         
         doc.setDrawColor(226, 232, 240); 
         doc.setLineWidth(0.5);
-        doc.line(14, 45, 196, 45);
+        doc.line(14, 40, 196, 40);
 
-        // ==========================================
-        // 2. DADOS DO CLIENTE (COM EMAIL E CONTATO)
-        // ==========================================
-        doc.setFontSize(16);
+        doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]); 
-        doc.text(`ORÇAMENTO TÉCNICO Nº ${orc.numero_orcamento}`, 14, 57);
+        doc.text(`PROPOSTA COMERCIAL Nº ${orc.numero_orcamento}`, 14, 50);
 
-        // Caixa Cinza (Aumentada para 4 linhas de info)
         doc.setFillColor(248, 250, 252); 
         doc.setDrawColor(226, 232, 240); 
-        doc.roundedRect(14, 62, 182, 45, 3, 3, 'FD'); 
+        doc.roundedRect(14, 55, 182, 36, 3, 3, 'FD'); 
 
-        doc.setFontSize(9);
-        doc.setTextColor(100, 116, 139); // Label color
-        
-        // Coluna 1 Labels
-        doc.text("Cliente:", 18, 70);
-        doc.text("CNPJ/CPF:", 18, 78);
-        doc.text("Solicitante:", 18, 86);
-        doc.text("E-mail:", 18, 94); // Nova Linha
-        doc.text("Telefone:", 18, 102); // Nova Linha
-
-        // Coluna 1 Dados
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(15, 23, 42); // Data color
-        doc.text(`${orc.clientes?.nome_fantasia || 'Cliente não identificado'}`, 40, 70);
-        doc.text(`${orc.clientes?.doc_id || '-'}`, 40, 78);
-        doc.text(`${orc.solicitante || 'Responsável Técnico'}`, 40, 86);
-        doc.text(`${orc.email_contato || orc.clientes?.email || '-'}`, 40, 94); // Puxa do orçamento ou do cadastro
-        doc.text(`${orc.telefone_contato || orc.clientes?.telefone || '-'}`, 40, 102);
-
-        // Coluna 2 (Datas)
-        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
-        doc.text("Emissão:", 130, 70);
-        doc.text("Validade:", 130, 78);
-        doc.text("Status:", 130, 86);
+        doc.text("Cliente:", 18, 63); doc.text("CNPJ/CPF:", 18, 70); doc.text("A/C (Aos cuidados):", 18, 77); doc.text("Contato:", 18, 84);
 
         doc.setFont("helvetica", "bold");
         doc.setTextColor(15, 23, 42);
-        doc.text(`${format(parseISO(orc.data_emissao), 'dd/MM/yyyy')}`, 155, 70);
-        doc.text(`${orc.validade ? format(parseISO(orc.validade), 'dd/MM/yyyy') : '15 dias'}`, 155, 78);
-        
-        // Status com cor dinâmica (simulação visual)
-        doc.setTextColor(orc.status === 'APROVADO' ? 22 : 202, orc.status === 'APROVADO' ? 163 : 138, orc.status === 'APROVADO' ? 74 : 4);
-        doc.text(`${orc.status}`, 155, 86);
+        doc.text(`${orc.clientes?.nome_fantasia || orc.clientes?.razao_social || '-'}`, 48, 63);
+        doc.text(`${orc.clientes?.doc_id || '-'}`, 48, 70);
+        doc.text(`${orc.solicitante || orc.clientes?.responsavel || '-'}`, 48, 77);
+        doc.text(`${orc.telefone_contato || orc.clientes?.telefone || '-'} ${orc.email_contato ? ` |  ${orc.email_contato}` : ''}`, 48, 84);
 
-        // ==========================================
-        // 3. TABELA DE ITENS
-        // ==========================================
-        const tableData = itens?.map((i: any, index: number) => [
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 116, 139);
+        doc.text("Emissão:", 140, 63); doc.text("Validade:", 140, 70); doc.text("Status:", 140, 77);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
+        doc.text(`${format(parseISO(orc.data_emissao), 'dd/MM/yyyy')}`, 155, 63);
+        doc.text(`${orc.validade ? format(parseISO(orc.validade), 'dd/MM/yyyy') : '-'}`, 155, 70);
+        
+        doc.setTextColor(orc.status === 'APROVADO' ? 22 : 202, orc.status === 'APROVADO' ? 163 : 138, orc.status === 'APROVADO' ? 74 : 4);
+        doc.text(`${orc.status}`, 155, 77);
+
+        const tableData = itensComFotos.map((i: any, index: number) => [
             (index + 1).toString().padStart(2, '0'), 
-            i.descricao,
-            i.quantidade.toString(),
+            '', 
+            i.descricao || '-',
+            i.quantidade?.toString() || '0',
             `R$ ${Number(i.valor_unitario).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
             `R$ ${Number(i.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-        ]) || [];
+        ]);
 
         autoTable(doc, {
-            startY: 115,
-            head: [['#', 'DESCRIÇÃO DO SERVIÇO / PRODUTO', 'QTD', 'VALOR UNIT.', 'VALOR TOTAL']],
+            startY: 98,
+            head: [['#', 'FOTO', 'DESCRIÇÃO DO SERVIÇO / MATERIAL', 'QTD', 'VALOR UNIT.', 'VALOR TOTAL']],
             body: tableData,
             theme: 'grid',
-            headStyles: { 
-                fillColor: colorPrimary, 
-                textColor: 255, 
-                fontStyle: 'bold', 
-                fontSize: 8,
-                halign: 'center'
-            }, 
-            bodyStyles: { 
-                fontSize: 9, 
-                textColor: 50,
-                cellPadding: 4 
-            },
+            headStyles: { fillColor: colorPrimary, textColor: 255, fontStyle: 'bold', fontSize: 8, halign: 'center' }, 
+            bodyStyles: { fontSize: 8, textColor: 50, cellPadding: { top: 6, bottom: 6, left: 2, right: 2 }, minCellHeight: 14 }, 
+            alternateRowStyles: { fillColor: [248, 250, 252] }, 
             columnStyles: {
-                0: { halign: 'center', cellWidth: 10 },
-                1: { cellWidth: 'auto' },
-                2: { halign: 'center', cellWidth: 15 },
-                3: { halign: 'right', cellWidth: 35 },
-                4: { halign: 'right', cellWidth: 35 }
+                0: { halign: 'center', cellWidth: 8 },
+                1: { halign: 'center', cellWidth: 16 }, 
+                2: { cellWidth: 'auto' },
+                3: { halign: 'center', cellWidth: 12 },
+                4: { halign: 'right', cellWidth: 28 },
+                5: { halign: 'right', cellWidth: 30 }
+            },
+            didDrawCell: (data) => {
+                if (data.section === 'body' && data.column.index === 1) {
+                    const rowData = itensComFotos[data.row.index];
+                    if (rowData.fotoBase64) {
+                        try {
+                            doc.addImage(rowData.fotoBase64, 'JPEG', data.cell.x + 2, data.cell.y + 1, 12, 12, '', 'FAST');
+                        } catch (e) { console.warn("Erro rendering foto item") }
+                    } else {
+                        doc.setFontSize(6);
+                        doc.setTextColor(200, 200, 200);
+                        doc.text("S/ FOTO", data.cell.x + 8, data.cell.y + 8, { align: 'center' });
+                    }
+                }
             }
         });
 
-        // ==========================================
-        // 4. TOTAIS E PAGAMENTO
-        // ==========================================
-        let finalY = (doc as any).lastAutoTable.finalY || 115;
+        let finalY = (doc as any).lastAutoTable.finalY || 100;
         if (finalY > 210) { doc.addPage(); finalY = 20; }
 
-        // Box Total
         doc.setFillColor(241, 245, 249); 
-        doc.roundedRect(120, finalY + 5, 76, 14, 1, 1, 'F');
-        doc.setFontSize(12);
+        doc.roundedRect(136, finalY + 5, 60, 15, 2, 2, 'F');
+        doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
-        doc.text(`TOTAL: R$ ${Number(orc.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 192, finalY + 14, { align: 'right' });
+        doc.text(`TOTAL: R$ ${Number(orc.valor_total).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 192, finalY + 15, { align: 'right' });
 
-        // Informações de Pagamento
-        doc.setFontSize(9);
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text("Condições de Pagamento:", 14, finalY + 10);
+        doc.setFont("helvetica", "bold");
         doc.setTextColor(15, 23, 42);
-        doc.text("Condições de Pagamento:", 14, finalY + 12);
-        doc.setFont("helvetica", "normal");
-        doc.text(`${orc.metodo_pagamento || 'Boleto Bancário'} - ${orc.prazo_pagamento || 'À vista'}`, 14, finalY + 17);
+        doc.text(`${orc.metodo_pagamento || '-'}   |   Prazo: ${orc.prazo_pagamento || '-'}`, 14, finalY + 15);
 
-        // ==========================================
-        // 5. OBSERVAÇÕES E TERMOS JURÍDICOS (PROFISSIONALIZAÇÃO)
-        // ==========================================
-        finalY += 30;
+        finalY += 35;
         
-        // Observações Específicas
         if (orc.observacoes) {
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(9);
-            doc.text("Observações Específicas:", 14, finalY);
+            doc.setFontSize(8);
+            doc.setTextColor(colorPrimary[0], colorPrimary[1], colorPrimary[2]);
+            doc.text("Observações Extras:", 14, finalY);
             doc.setFont("helvetica", "normal");
+            doc.setTextColor(71, 85, 105);
             const splitObs = doc.splitTextToSize(orc.observacoes, 180);
             doc.text(splitObs, 14, finalY + 5);
-            finalY += (splitObs.length * 5) + 10;
+            finalY += (splitObs.length * 4) + 10;
         }
 
-        // --- BLOCO JURÍDICO PADRÃO (Termos de Serviço) ---
-        if (finalY > 240) { doc.addPage(); finalY = 20; }
+        if (finalY > 230) { doc.addPage(); finalY = 20; }
         
-        doc.setDrawColor(200, 200, 200);
+        doc.setDrawColor(226, 232, 240);
         doc.line(14, finalY, 196, finalY);
-        finalY += 5;
-
-        doc.setFontSize(7); // Fonte pequena para termos legais
-        doc.setTextColor(100, 100, 100);
-        doc.setFont("helvetica", "bold");
-        doc.text("TERMOS E CONDIÇÕES GERAIS DE FORNECIMENTO:", 14, finalY);
-        
-        doc.setFont("helvetica", "normal");
-        const termos = [
-            "1. VALIDADE: Esta proposta é válida pelo prazo estipulado no cabeçalho. Após este período, os valores e disponibilidade estão sujeitos a reajuste.",
-            "2. GARANTIA: Garantia legal de 90 (noventa) dias sobre serviços prestados e peças substituídas, conforme Art. 26 do Código de Defesa do Consumidor (Lei 8.078/90), exceto quando estipulado prazo maior em contrato específico.",
-            "3. PAGAMENTO: O não pagamento na data de vencimento acarretará multa de 2% e juros de mora de 1% ao mês pro rata die.",
-            "4. APROVAÇÃO: A aprovação deste orçamento, seja por assinatura, e-mail ou ordem de compra, implica na aceitação integral destes termos.",
-            "5. EXECUÇÃO: O prazo de execução inicia-se após a aprovação formal e liberação do equipamento/local pelo cliente."
-        ];
-        
-        let termY = finalY + 4;
-        termos.forEach(termo => {
-            doc.text(termo, 14, termY);
-            termY += 3.5;
-        });
-
-        // ==========================================
-        // 6. ÁREA DE ASSINATURA (Aceite)
-        // ==========================================
-        const assinaturaY = 265; // Perto do rodapé
-        doc.setDrawColor(150, 150, 150);
-        doc.line(14, assinaturaY, 90, assinaturaY); // Linha Cliente
-        doc.line(110, assinaturaY, 186, assinaturaY); // Linha Empresa
+        finalY += 6;
 
         doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.setFont("helvetica", "bold");
+        doc.text("TERMOS E CONDIÇÕES DE FORNECIMENTO:", 14, finalY);
+        
+        doc.setFont("helvetica", "normal");
+        
+        // 🚀 O MOTOR DE TERMOS: Usa o que o vendedor digitou na tela!
+        const termosTexto = orc.termos_condicoes || "Sem termos informados para esta proposta.";
+        
+        const termosLinhas = doc.splitTextToSize(termosTexto, 182);
+        doc.text(termosLinhas, 14, finalY + 4);
+        
+        finalY += (termosLinhas.length * 3.5) + 10;
+
+        if (finalY > 260) { doc.addPage(); finalY = 40; } 
+
+        const assinaturaY = Math.max(finalY + 10, 260); 
+        doc.setDrawColor(150, 150, 150);
+        doc.line(14, assinaturaY, 90, assinaturaY); 
+        doc.line(110, assinaturaY, 196, assinaturaY); 
+
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
         doc.text("DE ACORDO (CLIENTE)", 14, assinaturaY + 4);
+        doc.setFont("helvetica", "normal");
         doc.text("DATA: ____/____/_______", 14, assinaturaY + 8);
 
-        doc.text("ATLAS SYSTEM - TÉCNICO RESPONSÁVEL", 110, assinaturaY + 4);
+        doc.setFont("helvetica", "bold");
+        doc.text(config?.nome_empresa?.toUpperCase() || 'ATLAS SYSTEM MEDICAL', 110, assinaturaY + 4);
+        doc.setFont("helvetica", "normal");
+        doc.text("Departamento Técnico / Comercial", 110, assinaturaY + 8);
 
-        // ==========================================
-        // 7. RODAPÉ
-        // ==========================================
         const pageCount = (doc as any).internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
             doc.setPage(i);
-            doc.setFontSize(7);
+            doc.setFontSize(6);
             doc.setTextColor(150, 150, 150);
-            doc.text(`Orçamento #${orc.numero_orcamento} - Documento gerado eletronicamente em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 290);
-            doc.text(`Pág ${i}/${pageCount}`, 196, 290, { align: 'right' });
+            doc.text(`Proposta Comercial #${orc.numero_orcamento} - Gerado digitalmente em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 290);
+            doc.text(`Página ${i} de ${pageCount}`, 196, 290, { align: 'right' });
         }
 
-        doc.save(`Orcamento_${orc.numero_orcamento}.pdf`);
+        if (acao === 'download') {
+            doc.save(`Proposta_Comercial_${orc.numero_orcamento}.pdf`);
+        } else {
+            const pdfBlob = doc.output('blob');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            window.open(pdfUrl, '_blank');
+        }
 
     } catch (error) {
         console.error("Erro PDF:", error);

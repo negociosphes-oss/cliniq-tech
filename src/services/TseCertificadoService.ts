@@ -15,21 +15,30 @@ export class TseCertificadoService {
       
       const tseData = tseDataList[0];
 
+      // Busca Perfil Norma
       if (tseData.perfil_id) {
           const { data: perfil } = await supabase.from('metrologia_tse_normas').select('*').eq('id', tseData.perfil_id).maybeSingle();
           tseData.metrologia_tse_normas = perfil || {};
       }
 
+      // 🚀 BUSCA INTELIGENTE DO EQUIPAMENTO + NOVO DICIONÁRIO
       if (tseData.equipamento_id) {
-          const { data: equip } = await supabase.from('equipamentos').select('*').eq('id', tseData.equipamento_id).maybeSingle();
+          const { data: equip } = await supabase
+            .from('equipamentos')
+            .select(`
+                *, 
+                clientes(*), 
+                dict_modelos(*, dict_tecnologias(*), dict_fabricantes(*))
+            `)
+            .eq('id', tseData.equipamento_id)
+            .maybeSingle();
+
           if (equip) {
-              if (equip.cliente_id) {
-                  const { data: cli } = await supabase.from('clientes').select('*').eq('id', equip.cliente_id).maybeSingle();
-                  equip.clientes = cli || {};
-              }
-              if (equip.tecnologia_id) {
-                  const { data: tec } = await supabase.from('tecnologias').select('*').eq('id', equip.tecnologia_id).maybeSingle();
-                  equip.tecnologias = tec || {};
+              // Converte o "Dicionário Novo" pro formato que o PDF já entende (Evita ter que reescrever o PDF)
+              if (equip.dict_modelos) {
+                  equip.tecnologias = { nome: equip.dict_modelos.dict_tecnologias?.nome };
+                  equip.fabricante = equip.dict_modelos.dict_fabricantes?.nome;
+                  equip.modelo = equip.dict_modelos.nome;
               }
           }
           tseData.equipamentos = equip || {};
@@ -42,17 +51,14 @@ export class TseCertificadoService {
 
       let configData = {};
       
-      // 1. Tenta puxar da empresas_inquilinas
+      // Tenta puxar configurações do inquilino ou da matriz
       const { data: tenantData } = await supabase.from('empresas_inquilinas').select('*').eq('id', tseData.tenant_id || 1).maybeSingle();
       if (tenantData) configData = { ...configData, ...tenantData };
       
-      // 2. 🚀 A MÁGICA: Puxa da sua tabela exata 'configuracoes_empresa' que você me mostrou no vídeo
       try {
          const { data: confData } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
          if (confData) configData = { ...configData, ...confData };
-      } catch (e) {
-         // ignora se falhar
-      }
+      } catch (e) {}
 
       return { data: tseData, empresaConfig: configData };
       

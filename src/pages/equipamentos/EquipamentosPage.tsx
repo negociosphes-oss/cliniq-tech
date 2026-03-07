@@ -1,284 +1,394 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  Plus, Search, Monitor, Filter, History, Edit3, Trash2, 
-  ChevronDown, ChevronUp, Eraser, Printer, ArrowUpDown, 
-  ShieldCheck, QrCode, FileSpreadsheet, Download, Loader2,
-  Hash, Factory, User, Activity, Tag, UploadCloud, FileDown
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Search, Filter, QrCode, Edit2, Trash2, Loader2, CheckSquare, Square, Printer, FileSpreadsheet, FileDown, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { EquipamentosForm } from './EquipamentosForm';
+
+// IMPORTANDO OS SERVIÇOS E COMPONENTES
+import { RelatorioInventarioService } from '../../services/RelatorioInventarioService';
+import { EquipamentosForm } from './EquipamentosForm'; 
 import { EquipamentoDetalhes } from './EquipamentoDetalhes'; 
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { BatchEtiquetasModal } from './components/BatchEtiquetasModal'; 
 
 export function EquipamentosPage() {
-  const [loading, setLoading] = useState(true);
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
-  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR DE INQUILINO
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [formVersion, setFormVersion] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [configEmpresa, setConfigEmpresa] = useState<any>(null);
 
+  // ESTADOS DOS MODAIS
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [selectedEquipForDetails, setSelectedEquipForDetails] = useState<any>(null);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [selectedEquips, setSelectedEquips] = useState<number[]>([]);
+
+  // ESTADOS DOS FILTROS AVANÇADOS
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState({
-    buscaGlobal: '', tag: '', serial: '', patrimonio: '',
-    tipo: '', fabricante: '', modelo: '', cliente: '', status: ''
-  });
-  
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [searchTerm, setSearchTerm] = useState(''); 
+  const [fTag, setFTag] = useState('');
+  const [fPatrimonio, setFPatrimonio] = useState('');
+  const [fSerie, setFSerie] = useState('');
+  const [fCliente, setFCliente] = useState('');
+  const [fStatus, setFStatus] = useState('');
+  const [fRisco, setFRisco] = useState('');
+  const [fTipo, setFTipo] = useState('');
+  const [fFabricante, setFFabricante] = useState('');
 
-  // 🚀 1. MOTOR FAREJADOR: Identifica quem está logado pela URL
   useEffect(() => {
-    const initTenant = async () => {
-      try {
-        const hostname = window.location.hostname;
-        let slug = hostname.split('.')[0];
-        
-        // Se for localhost puro, app ou www, cai na Sede (ID 1)
-        if (slug === 'localhost' || slug === 'app' || slug === 'www') {
-            slug = 'atlasum';
-        }
-
-        const { data: tenant } = await supabase
-            .from('empresas_inquilinas')
-            .select('id')
-            .eq('slug_subdominio', slug)
-            .maybeSingle();
-
-        const tId = tenant ? tenant.id : 1;
-        setTenantId(tId);
-        fetchEquipamentos(tId); // Chama a busca já passando a chave da empresa
-      } catch (err) {
-        console.error("Erro ao identificar inquilino:", err);
-      }
-    };
-    initTenant();
+    fetchData();
+    fetchConfig();
   }, []);
 
-  // 🚀 2. FECHADURA DE BUSCA: Só puxa ativos do Tenant ID correto
-  const fetchEquipamentos = async (tId: number) => {
+  const fetchConfig = async () => {
+      const { data } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
+      if (data) setConfigEmpresa(data);
+  };
+
+  // 🚀 BUSCA BLINDADA
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('equipamentos')
-        .select(`*, cliente:clientes(id, nome_fantasia), tecnologia:tecnologias!fk_tecnologia_oficial(nome, fabricante, modelo, registro_anvisa)`)
-        .eq('tenant_id', tId) // A TRAVA DE SEGURANÇA ESTÁ AQUI
-        .order('created_at', { ascending: false });
+      const [resEq, resCli] = await Promise.all([
+          supabase.from('equipamentos').select('*').order('created_at', { ascending: false }),
+          supabase.from('clientes').select('id, nome_fantasia')
+      ]);
 
-      if (error) throw error;
-      setEquipamentos(data || []);
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setLoading(false); 
+      if (resEq.error) throw resEq.error;
+
+      const cliMap = new Map((resCli.data || []).map(c => [String(c.id), c]));
+
+      const eqHidratados = (resEq.data || []).map(eq => ({
+          ...eq,
+          clienteData: cliMap.get(String(eq.cliente_id))
+      }));
+
+      setEquipamentos(eqHidratados);
+    } catch (error: any) {
+      console.error('Erro de conexão:', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Dados para Filtros
-  const uniqueData = useMemo(() => {
-    const clientesMap = new Map();
-    const fabricantesSet = new Set<string>();
-    const modelosSet = new Set<string>();
-    const tiposSet = new Set<string>();
+  // 🚀 MOTOR DE FILTRAGEM CRUZADA
+  const filteredEquipamentos = equipamentos.filter(eq => {
+      const tag = (eq.tag || '').toLowerCase();
+      const patrimonio = (eq.patrimonio || '').toLowerCase();
+      const serie = (eq.n_serie || '').toLowerCase();
+      const cliente = (eq.clienteData?.nome_fantasia || eq.clientes?.nome_fantasia || '').toLowerCase();
+      const status = (eq.status || 'Operacional').toLowerCase();
+      const risco = (eq.classe_risco || '').toLowerCase();
+      const tipo = (eq.nome || '').toLowerCase();
+      const fabricante = (eq.fabricante || '').toLowerCase();
 
-    equipamentos.forEach(item => {
-        if (item.cliente) clientesMap.set(item.cliente.id, item.cliente.nome_fantasia);
-        const fab = item.fabricante || item.tecnologia?.fabricante;
-        const mod = item.modelo || item.tecnologia?.modelo;
-        const tipo = item.nome || item.tecnologia?.nome;
-        if (fab) fabricantesSet.add(fab);
-        if (mod) modelosSet.add(mod);
-        if (tipo) tiposSet.add(tipo);
-    });
+      // Checagem Granular
+      if (fTag && !tag.includes(fTag.toLowerCase())) return false;
+      if (fPatrimonio && !patrimonio.includes(fPatrimonio.toLowerCase())) return false;
+      if (fSerie && !serie.includes(fSerie.toLowerCase())) return false;
+      if (fCliente && cliente !== fCliente.toLowerCase()) return false;
+      if (fStatus && status !== fStatus.toLowerCase()) return false;
+      if (fRisco && risco !== fRisco.toLowerCase()) return false;
+      if (fTipo && tipo !== fTipo.toLowerCase()) return false;
+      if (fFabricante && fabricante !== fFabricante.toLowerCase()) return false;
 
-    return {
-        clientes: Array.from(clientesMap.entries()),
-        fabricantes: Array.from(fabricantesSet).sort(),
-        modelos: Array.from(modelosSet).sort(),
-        tipos: Array.from(tiposSet).sort()
-    };
-  }, [equipamentos]);
+      // Checagem Global (Busca Rápida)
+      if (searchTerm) {
+          const term = searchTerm.toLowerCase();
+          const matchesGeneral = tag.includes(term) || serie.includes(term) || tipo.includes(term) || cliente.includes(term) || fabricante.includes(term);
+          if (!matchesGeneral) return false;
+      }
 
-  // Filtragem
-  const processedItems = useMemo(() => {
-    let result = equipamentos.filter(item => {
-      const iNome = (item.nome || item.tecnologia?.nome || '').toLowerCase();
-      const iFab = (item.fabricante || item.tecnologia?.fabricante || '').toLowerCase();
-      const iMod = (item.modelo || item.tecnologia?.modelo || '').toLowerCase();
-      const iTag = (item.tag || '').toLowerCase();
-      const iSerie = (item.n_serie || '').toLowerCase();
-      const iStatus = (item.status || '').toLowerCase();
-      const iClienteId = item.cliente?.id?.toString();
+      return true;
+  });
 
-      const fGlobal = filters.buscaGlobal.toLowerCase().trim();
-      
-      const matchGlobal = !fGlobal || iTag.includes(fGlobal) || iSerie.includes(fGlobal) || iNome.includes(fGlobal) || iFab.includes(fGlobal) || iMod.includes(fGlobal);
-      const matchTag = !filters.tag || iTag.includes(filters.tag.toLowerCase());
-      const matchSerial = !filters.serial || iSerie.includes(filters.serial.toLowerCase());
-      const matchPat = !filters.patrimonio || (item.patrimonio || '').toLowerCase().includes(filters.patrimonio.toLowerCase());
-      const matchTipo = !filters.tipo || iNome.includes(filters.tipo.toLowerCase());
-      const matchFab = !filters.fabricante || iFab.includes(filters.fabricante.toLowerCase());
-      const matchMod = !filters.modelo || iMod.includes(filters.modelo.toLowerCase());
-      const matchCliente = !filters.cliente || iClienteId === filters.cliente;
-      const matchStatus = !filters.status || iStatus === filters.status.toLowerCase();
+  // Extrair listas únicas e ordenadas alfabeticamente para os Combobox
+  const uniqueClientes = Array.from(new Set(equipamentos.map(eq => eq.clienteData?.nome_fantasia || eq.clientes?.nome_fantasia).filter(Boolean))).sort();
+  const uniqueTipos = Array.from(new Set(equipamentos.map(eq => eq.nome).filter(Boolean))).sort();
+  const uniqueFabs = Array.from(new Set(equipamentos.map(eq => eq.fabricante).filter(Boolean))).sort();
 
-      return matchGlobal && matchTag && matchSerial && matchPat && matchTipo && matchFab && matchMod && matchCliente && matchStatus;
-    });
+  const limparFiltros = () => {
+      setFTag(''); setFPatrimonio(''); setFSerie(''); setFCliente('');
+      setFStatus(''); setFRisco(''); setFTipo(''); setFFabricante('');
+      setSearchTerm('');
+  };
 
-    if (sortConfig !== null) {
-      result.sort((a, b) => {
-        let aVal = '', bVal = '';
-        if (sortConfig.key === 'tag') { aVal = a.tag; bVal = b.tag; }
-        else if (sortConfig.key === 'equipamento') { aVal = a.nome || a.tecnologia?.nome; bVal = b.nome || b.tecnologia?.nome; }
-        else { aVal = a[sortConfig.key]; bVal = b[sortConfig.key]; }
-        
-        aVal = (aVal || '').toString().toLowerCase();
-        bVal = (bVal || '').toString().toLowerCase();
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return result;
-  }, [equipamentos, filters, sortConfig]);
+  // 🚀 FUNÇÕES DE AÇÃO DA TABELA
+  const handleSelectEquip = (id: number) => setSelectedEquips(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const handleSelectAll = () => {
+      if (selectedEquips.length === filteredEquipamentos.length) setSelectedEquips([]);
+      else setSelectedEquips(filteredEquipamentos.map(eq => eq.id));
+  };
 
-  // Ações
-  const handleNew = () => { setSelectedItem(null); setFormVersion(v => v + 1); setIsModalOpen(true); };
-  const handleEdit = (item: any) => { setSelectedItem(item); setFormVersion(v => v + 1); setIsModalOpen(true); };
-  const handleHistory = (item: any) => { setSelectedItem(item); setIsDetailsOpen(true); };
-  
-  // 🚀 3. FECHADURA DE EXCLUSÃO
-  const handleDelete = async (id: number) => {
-    if (!confirm('Deseja excluir permanentemente este ativo?')) return;
-    await supabase.from('equipamentos')
-        .delete()
-        .eq('id', id)
-        .eq('tenant_id', tenantId); // Trava extra hacker-proof
-    fetchEquipamentos(tenantId);
+  const handleDelete = async (id: number, tag: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o equipamento ${tag}? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await supabase.from('equipamentos').delete().eq('id', id);
+      fetchData();
+      setSelectedEquips(prev => prev.filter(x => x !== id));
+    } catch (error: any) { alert('Erro ao excluir: ' + error.message); }
+  };
+
+  // 🚀 O FANTASMA MORTO: Função de edição garantida
+  const handleOpenEdit = (id: number) => { 
+      setEditId(id); 
+      setShowFormModal(true); 
   };
   
-  const clearFilters = () => { setFilters({ buscaGlobal: '', tag: '', serial: '', patrimonio: '', tipo: '', fabricante: '', modelo: '', cliente: '', status: '' }); setSortConfig(null); };
-  const requestSort = (key: string) => { setSortConfig({ key, direction: sortConfig?.direction === 'asc' ? 'desc' : 'asc' }); };
+  const handleOpenDetails = (equipamento: any) => { setSelectedEquipForDetails(equipamento); };
+  const handleCloseForm = () => { setShowFormModal(false); setEditId(null); };
 
-  // Exportação
+  // EXPORTAÇÕES
   const handleExportExcel = () => {
-    const data = processedItems.map(i => ({
-        TAG: i.tag, EQUIPAMENTO: i.nome || i.tecnologia?.nome, FABRICANTE: i.fabricante || i.tecnologia?.fabricante,
-        MODELO: i.modelo || i.tecnologia?.modelo, SERIE: i.n_serie, CLIENTE: i.cliente?.nome_fantasia, STATUS: i.status
-    }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Inventario");
-    XLSX.writeFile(wb, "Inventario.xlsx");
+      const dataToExport = selectedEquips.length > 0 ? filteredEquipamentos.filter(eq => selectedEquips.includes(eq.id)) : filteredEquipamentos;
+      RelatorioInventarioService.exportarExcel(dataToExport);
+  };
+  const handlePrintPDF = () => {
+      const dataToExport = selectedEquips.length > 0 ? filteredEquipamentos.filter(eq => selectedEquips.includes(eq.id)) : filteredEquipamentos;
+      RelatorioInventarioService.imprimirPDF(dataToExport, configEmpresa);
   };
 
   return (
-    <div className="p-8 animate-fadeIn max-w-[1900px] mx-auto pb-24">
-      {/* HEADER */}
-      <div className="flex flex-col xl:flex-row justify-between items-end mb-8 gap-6">
-        <div>
-          <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-            <span className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg"><Monitor size={24}/></span> 
-            Inventário Geral
-          </h2>
-          <p className="text-slate-500 font-medium mt-2">Base instalada ({processedItems.length} ativos).</p>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-           <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-               <button onClick={handleExportExcel} className="btn-tool text-emerald-700"><FileSpreadsheet size={16}/> Excel</button>
-           </div>
-           <button onClick={handleNew} className="h-12 px-6 bg-blue-600 text-white hover:bg-blue-700 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 ml-2">
-             <Plus size={20}/> Novo Ativo
-           </button>
-        </div>
-      </div>
-
-      {/* FILTROS */}
-      <div className={`bg-white rounded-[2rem] shadow-sm border mb-6 transition-all ${showFilters ? 'border-blue-200 ring-4 ring-blue-50' : 'border-slate-100'}`}>
-        <div className="flex gap-3 p-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
-            <input className="w-full pl-12 h-12 bg-slate-50 rounded-xl font-medium outline-none focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
-              placeholder="Busca Rápida..." value={filters.buscaGlobal} onChange={e => setFilters({...filters, buscaGlobal: e.target.value})} />
-          </div>
-          <button onClick={() => setShowFilters(!showFilters)} className="px-6 rounded-xl font-bold flex items-center gap-2 border bg-white text-slate-600"><Filter size={18}/> Filtros {showFilters ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-          {Object.values(filters).some(v => v) && <button onClick={clearFilters} className="px-4 rounded-xl bg-rose-50 text-rose-600 border border-rose-100"><Eraser size={18}/></button>}
+    <div className="p-6 md:p-8 max-w-[1920px] mx-auto min-h-screen animate-fadeIn">
+      
+      {/* HEADER DA PÁGINA */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
+        <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg"><QrCode size={24}/></div>
+            <div>
+                <h1 className="text-3xl font-black text-slate-800 tracking-tight">Inventário Geral</h1>
+                <p className="text-slate-500 font-medium mt-1">Base instalada ({filteredEquipamentos.length} ativos listados).</p>
+            </div>
         </div>
         
-        {showFilters && (
-          <div className="p-6 border-t border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-5 bg-slate-50/30">
-             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Fabricante</label>
-                <select className="input-filter cursor-pointer" value={filters.fabricante} onChange={e => setFilters({...filters, fabricante: e.target.value})}>
-                    <option value="">Todos</option>{uniqueData.fabricantes.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
-             </div>
-             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Cliente</label>
-                <select className="input-filter cursor-pointer" value={filters.cliente} onChange={e => setFilters({...filters, cliente: e.target.value})}>
-                    <option value="">Todos</option>{uniqueData.clientes.map(([id, nm]) => <option key={id} value={id}>{nm}</option>)}
-                </select>
-             </div>
-             <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Status</label>
-                <select className="input-filter cursor-pointer" value={filters.status} onChange={e => setFilters({...filters, status: e.target.value})}>
-                    <option value="">Todos</option>
-                    <option value="operacional">Operacional</option>
-                    <option value="manutenção">Em Manutenção</option>
-                    <option value="inativo">Inativo / Desativado</option>
-                </select>
-             </div>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+            {selectedEquips.length > 0 && (
+                <button onClick={() => setShowBatchModal(true)} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-black flex items-center gap-2 transition-all shadow-lg animate-fadeIn">
+                    <Printer size={18}/> Lote Etiquetas ({selectedEquips.length})
+                </button>
+            )}
+            
+            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                <button onClick={handlePrintPDF} className="px-4 py-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg font-bold flex items-center gap-2 transition-all" title="Gerar Relatório em PDF">
+                    <FileDown size={18}/> PDF
+                </button>
+                <div className="w-[1px] h-6 bg-slate-200 mx-1"></div>
+                <button onClick={handleExportExcel} className="px-4 py-2 text-emerald-600 hover:bg-emerald-50 rounded-lg font-bold flex items-center gap-2 transition-all" title="Baixar Planilha Excel">
+                    <FileSpreadsheet size={18}/> Excel
+                </button>
+            </div>
+
+            <button onClick={() => { setEditId(null); setShowFormModal(true); }} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black flex items-center gap-2 shadow-lg transition-all active:scale-95 ml-2">
+                <Plus size={20}/> Novo Ativo
+            </button>
+        </div>
       </div>
 
-      {/* TABELA */}
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-        {loading ? <div className="p-12 text-center"><Loader2 className="animate-spin text-blue-500 mx-auto" size={32}/></div> : (
-        <div className="overflow-x-auto">
-            <table className="w-full text-left">
-                <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black border-b border-slate-100 select-none">
-                <tr>
-                    <th className="p-5 text-center">Status</th>
-                    <th className="p-5 cursor-pointer hover:text-blue-600" onClick={() => requestSort('tag')}>TAG / ID</th>
-                    <th className="p-5 cursor-pointer hover:text-blue-600" onClick={() => requestSort('equipamento')}>Equipamento</th>
-                    <th className="p-5">Localização</th>
-                    <th className="p-5 text-right">Ações</th>
-                </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 text-sm">
-                {processedItems.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors group">
-                    <td className="p-5 text-center"><span className={`inline-block px-2 py-1 rounded-md text-[10px] font-bold border uppercase ${item.status === 'Operacional' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>{item.status}</span></td>
-                    <td className="p-5"><div className="font-bold text-slate-800 font-mono text-xs">{item.tag}</div><div className="text-[10px] text-slate-400">S/N: {item.n_serie}</div></td>
-                    <td className="p-5"><div className="font-bold">{item.nome || item.tecnologia?.nome}</div><div className="text-xs text-slate-500">{item.fabricante || item.tecnologia?.fabricante} • {item.modelo || item.tecnologia?.modelo}</div></td>
-                    <td className="p-5 text-xs font-bold text-blue-600">{item.cliente?.nome_fantasia}</td>
-                    <td className="p-5 text-right flex justify-end gap-2">
-                        <button onClick={() => handleHistory(item)} className="btn-icon"><History size={16}/></button>
-                        <button onClick={() => handleEdit(item)} className="btn-icon text-amber-500 hover:bg-amber-50"><Edit3 size={16}/></button>
-                        <button onClick={() => handleDelete(item.id)} className="btn-icon text-rose-500 hover:bg-rose-50"><Trash2 size={16}/></button>
-                    </td>
+      {/* BARRA DE BUSCA RÁPIDA E BOTÃO DE FILTROS */}
+      <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm mb-4 flex flex-wrap md:flex-nowrap gap-2 items-center">
+        <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
+            <input type="text" placeholder="Busca Rápida Geral..." className="w-full h-12 pl-12 pr-4 bg-transparent text-slate-700 font-medium outline-none placeholder:text-slate-400" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        <button onClick={() => setShowFilters(!showFilters)} className={`px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors border ${showFilters ? 'bg-blue-50 text-blue-600 border-blue-200 shadow-inner' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+            <Filter size={18}/> Filtros Avançados {showFilters && <X size={16} className="ml-1"/>}
+        </button>
+      </div>
+
+      {/* 🚀 PAINEL DE FILTROS AVANÇADOS INTELIGENTE */}
+      {showFilters && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-lg mb-6 animate-slideDown">
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><SlidersHorizontal size={16} className="text-blue-600"/> Cruzamento de Dados</h3>
+                  <button onClick={limparFiltros} className="text-xs font-bold text-rose-500 hover:text-rose-600 border border-rose-200 px-3 py-1.5 rounded-lg hover:bg-rose-50 transition-colors">Limpar Todos</button>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* TEXTOS */}
+                  <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">TAG do Ativo</label>
+                      <input type="text" className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fTag} onChange={e => setFTag(e.target.value)} placeholder="Ex: TAG-001" />
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Patrimônio</label>
+                      <input type="text" className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fPatrimonio} onChange={e => setFPatrimonio(e.target.value)} placeholder="Ex: 405020" />
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Nº de Série</label>
+                      <input type="text" className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fSerie} onChange={e => setFSerie(e.target.value)} placeholder="Ex: SN..." />
+                  </div>
+                  
+                  {/* FIXOS (Poucas opções, `<select>` normal é melhor) */}
+                  <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Status de Operação</label>
+                      <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fStatus} onChange={e => setFStatus(e.target.value)}>
+                          <option value="">Todos</option>
+                          <option value="operacional">Operacional</option>
+                          <option value="manutenção">Em Manutenção</option>
+                          <option value="inativo">Inativo / Baixado</option>
+                      </select>
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Classe de Risco</label>
+                      <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fRisco} onChange={e => setFRisco(e.target.value)}>
+                          <option value="">Todas</option>
+                          <option value="I - Baixo Risco">I - Baixo Risco</option>
+                          <option value="II - Médio Risco">II - Médio Risco</option>
+                          <option value="III - Alto Risco">III - Alto Risco</option>
+                          <option value="IV - Máximo Risco">IV - Máximo Risco</option>
+                      </select>
+                  </div>
+
+                  {/* 🚀 SUPER DROPDOWNS COM PESQUISA (Comboboxes) */}
+                  <SearchableSelect label="Cliente / Unidade" placeholder="Selecionar..." options={uniqueClientes} value={fCliente} onChange={setFCliente} />
+                  <SearchableSelect label="Tipo de Equipamento" placeholder="Selecionar..." options={uniqueTipos} value={fTipo} onChange={setFTipo} />
+                  <SearchableSelect label="Fabricante" placeholder="Selecionar..." options={uniqueFabs} value={fFabricante} onChange={setFFabricante} />
+              </div>
+          </div>
+      )}
+
+      {/* TABELA DE EQUIPAMENTOS */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="p-5 w-14 text-center">
+                            <button onClick={handleSelectAll} className="text-slate-400 hover:text-blue-600 transition-colors">
+                                {selectedEquips.length === filteredEquipamentos.length && filteredEquipamentos.length > 0 ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
+                            </button>
+                        </th>
+                        <th className="p-5 text-[11px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                        <th className="p-5 text-[11px] font-black uppercase tracking-widest text-slate-400">TAG / ID</th>
+                        <th className="p-5 text-[11px] font-black uppercase tracking-widest text-slate-400">Equipamento</th>
+                        <th className="p-5 text-[11px] font-black uppercase tracking-widest text-slate-400">Localização</th>
+                        <th className="p-5 text-[11px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
                     </tr>
-                ))}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {loading ? (
+                        <tr><td colSpan={6} className="p-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24}/> Carregando inventário...</td></tr>
+                    ) : filteredEquipamentos.length === 0 ? (
+                        <tr>
+                            <td colSpan={6} className="p-16 text-center">
+                                <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4"><Search size={32} className="text-slate-300"/></div>
+                                <p className="text-slate-500 font-bold text-lg">Nenhum equipamento encontrado.</p>
+                                <p className="text-slate-400 text-sm mt-1">Tente ajustar a busca ou limpar os filtros avançados.</p>
+                            </td>
+                        </tr>
+                    ) : (
+                        filteredEquipamentos.map((eq) => {
+                            const isSelected = selectedEquips.includes(eq.id);
+                            const nomeEquip = eq.nome || 'N/A';
+                            const fabricante = eq.fabricante || '-';
+                            const modelo = eq.modelo || '';
+                            const nomeCliente = eq.clienteData?.nome_fantasia || eq.clientes?.nome_fantasia || 'Sem Cliente';
+                            const status = eq.status || 'OPERACIONAL';
+
+                            return (
+                                <tr key={eq.id} className={`hover:bg-slate-50 transition-colors group cursor-pointer ${isSelected ? 'bg-blue-50/30' : ''}`} onClick={() => handleSelectEquip(eq.id)}>
+                                    <td className="p-5 text-center" onClick={(e) => e.stopPropagation()}>
+                                        <button onClick={() => handleSelectEquip(eq.id)} className="text-slate-300 hover:text-blue-600 transition-colors">
+                                            {isSelected ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
+                                        </button>
+                                    </td>
+                                    
+                                    <td className="p-5" onClick={() => handleOpenDetails(eq)}>
+                                        <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${status === 'OPERACIONAL' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>{status}</span>
+                                    </td>
+                                    
+                                    <td className="p-5" onClick={() => handleOpenDetails(eq)}>
+                                        <p className="font-black text-sm text-slate-800">{eq.tag}</p>
+                                        <p className="text-xs font-medium text-slate-500 mt-0.5">S/N: {eq.n_serie || 'N/A'}</p>
+                                    </td>
+                                    
+                                    <td className="p-5" onClick={() => handleOpenDetails(eq)}>
+                                        <p className="font-bold text-sm text-slate-800">{nomeEquip}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">{fabricante} {modelo ? `• ${modelo}` : ''}</p>
+                                    </td>
+                                    
+                                    <td className="p-5" onClick={() => handleOpenDetails(eq)}>
+                                        <p className="font-bold text-sm text-blue-600">{nomeCliente}</p>
+                                        {eq.setor && <p className="text-xs text-slate-500 mt-0.5">{eq.setor}</p>}
+                                    </td>
+                                    
+                                    <td className="p-5" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleOpenDetails(eq)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Abrir HUB do Equipamento"><QrCode size={18}/></button>
+                                            <button onClick={() => handleOpenEdit(eq.id)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Editar Dados"><Edit2 size={18}/></button>
+                                            <button onClick={() => handleDelete(eq.id, eq.tag)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Excluir"><Trash2 size={18}/></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })
+                    )}
                 </tbody>
             </table>
         </div>
-        )}
       </div>
 
-      {/* 🚀 4. PASSANDO O TENANT ID PARA O FORMULÁRIO */}
-      {isModalOpen && <EquipamentosForm key={`form-${selectedItem?.id || 'new'}-${formVersion}`} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={() => { setIsModalOpen(false); fetchEquipamentos(tenantId); }} equipmentToEdit={selectedItem} tenantId={tenantId} />}
-      
-      {isDetailsOpen && selectedItem && <EquipamentoDetalhes isOpen={isDetailsOpen} onClose={() => setIsDetailsOpen(false)} equipamento={selectedItem} />}
-      
-      <style>{`
-        .btn-tool { @apply px-4 py-2.5 text-slate-600 hover:bg-slate-50 hover:text-blue-600 rounded-lg font-bold text-xs flex items-center gap-2 transition-all border-r border-slate-100 last:border-0; }
-        .input-filter { @apply w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 outline-none focus:border-blue-500 transition-all; }
-        .btn-icon { @apply p-2.5 bg-white border border-slate-200 text-slate-400 hover:text-blue-600 rounded-xl transition-all shadow-sm; }
-      `}</style>
+      {showFormModal && <EquipamentosForm isOpen={showFormModal} onClose={handleCloseForm} onSuccess={() => { handleCloseForm(); fetchData(); }} editId={editId} />}
+      {selectedEquipForDetails && <EquipamentoDetalhes isOpen={!!selectedEquipForDetails} onClose={() => setSelectedEquipForDetails(null)} equipamento={selectedEquipForDetails} />}
+      {showBatchModal && <BatchEtiquetasModal equipamentos={equipamentos.filter(eq => selectedEquips.includes(eq.id))} configEmpresa={configEmpresa} onClose={() => setShowBatchModal(false)} />}
     </div>
   );
+}
+
+// 🚀 NOVO COMPONENTE: DROPDOWN PESQUISÁVEL INTERNO (Nível Enterprise)
+function SearchableSelect({ label, options, value, onChange, placeholder }: any) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+
+    const filteredOptions = options.filter((opt: string) => opt.toLowerCase().includes(search.toLowerCase()));
+
+    return (
+        <div className="relative">
+            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">{label}</label>
+            <div
+                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold flex items-center justify-between cursor-pointer transition-colors hover:border-blue-300"
+                onClick={() => setIsOpen(!isOpen)}
+            >
+                <span className={`truncate mr-2 ${value ? "text-slate-800" : "text-slate-400"}`}>{value || placeholder}</span>
+                <ChevronDown size={14} className="text-slate-400 shrink-0" />
+            </div>
+
+            {isOpen && (
+                <>
+                    {/* Fundo invisível para fechar o modal ao clicar fora */}
+                    <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
+                    
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
+                        <div className="p-2 border-b border-slate-100 bg-slate-50">
+                            <input
+                                type="text"
+                                className="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
+                                placeholder="Pesquisar..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                        <ul className="max-h-48 overflow-y-auto custom-scrollbar bg-white">
+                            <li
+                                className="px-4 py-2.5 text-xs hover:bg-blue-50 cursor-pointer text-slate-500 font-bold border-b border-slate-50"
+                                onClick={() => { onChange(''); setIsOpen(false); setSearch(''); }}
+                            >
+                                Mostrar Todos
+                            </li>
+                            {filteredOptions.map((opt: string, i: number) => (
+                                <li
+                                    key={i}
+                                    className={`px-4 py-2.5 text-xs cursor-pointer font-bold border-b border-slate-50 last:border-0 ${value === opt ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-700'}`}
+                                    onClick={() => { onChange(opt); setIsOpen(false); setSearch(''); }}
+                                >
+                                    {opt}
+                                </li>
+                            ))}
+                            {filteredOptions.length === 0 && (
+                                <li className="px-4 py-3 text-xs text-slate-400 text-center font-medium">Nenhum resultado</li>
+                            )}
+                        </ul>
+                    </div>
+                </>
+            )}
+        </div>
+    );
 }

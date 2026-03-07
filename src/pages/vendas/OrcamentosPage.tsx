@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, Trash2, Printer, Calculator, Filter, DollarSign, CheckCircle2, Clock, Edit, Calendar as CalendarIcon, X, ArrowRightCircle } from 'lucide-react';
+// 🚀 IMPORTAMOS O ÍCONE EYE E DOWNLOAD AQUI NO TOPO
+import { Search, Plus, Trash2, Calculator, Filter, DollarSign, CheckCircle2, Clock, Edit, Calendar as CalendarIcon, X, Eye, Download as DownloadIcon } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { format } from 'date-fns';
 
@@ -10,19 +11,16 @@ export function OrcamentosPage() {
   const [orcamentos, setOrcamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+  const [tenantId, setTenantId] = useState<number>(1);
   
-  // Estados de Filtro
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('TODOS');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   
-  // Controle do Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
-  // 🚀 1. MOTOR FAREJADOR
   useEffect(() => {
     const initTenant = async () => {
       try {
@@ -49,31 +47,24 @@ export function OrcamentosPage() {
     initTenant();
   }, []);
 
-  // 🚀 2. FECHADURA DO PIPELINE DE VENDAS
   const fetchOrcamentos = async (tId: number) => {
     setLoading(true);
     const { data } = await supabase
       .from('orçamentos')
       .select('*, clientes(nome_fantasia, doc_id)')
-      .eq('tenant_id', tId) // Trava Hacker-Proof
+      .eq('tenant_id', tId) 
       .order('created_at', { ascending: false });
       
     setOrcamentos(data || []);
     setLoading(false);
   };
 
-  // 🚀 3. TRAVA DE EXCLUSÃO
   const deleteOrcamento = async (id: number) => {
     if(!confirm("Deseja excluir este orçamento permanentemente?")) return;
-    await supabase
-      .from('orçamentos')
-      .delete()
-      .eq('id', id)
-      .eq('tenant_id', tenantId); // Trava Extra
+    await supabase.from('orçamentos').delete().eq('id', id).eq('tenant_id', tenantId);
     fetchOrcamentos(tenantId);
   };
 
-  // 🚀 4. AUTOMAÇÃO FINANCEIRA BLINDADA
   const aprovarEGerarFinanceiro = async (orcamento: any) => {
       if (orcamento.status === 'APROVADO') return alert("Este orçamento já está aprovado.");
       
@@ -84,7 +75,6 @@ export function OrcamentosPage() {
       if (!confirmacao) return;
 
       try {
-          // 1. Atualiza o status do orçamento com a Trava de Segurança
           const { error: errOrc } = await supabase
               .from('orçamentos')
               .update({ status: 'APROVADO', data_aprovacao: new Date().toISOString() })
@@ -93,12 +83,11 @@ export function OrcamentosPage() {
 
           if (errOrc) throw new Error("Erro ao atualizar orçamento.");
 
-          // 2. Cria o lançamento no Financeiro (Com a Vacina Tenant)
           const vencimentoEstimado = new Date();
           vencimentoEstimado.setDate(vencimentoEstimado.getDate() + 30); 
 
           const payloadFinanceiro = {
-              tenant_id: tenantId, // 🚀 CARIMBO DO INQUILINO INJETADO AQUI
+              tenant_id: tenantId,
               descricao: `Faturamento Orçamento #${orcamento.numero_orcamento}`,
               cliente_id: orcamento.cliente_id,
               valor_total: orcamento.valor_total,
@@ -130,7 +119,6 @@ export function OrcamentosPage() {
 
   const limparFiltros = () => { setBusca(''); setFiltroStatus('TODOS'); setDataInicio(''); setDataFim(''); };
 
-  // Lógica de Filtragem
   const orcamentosFiltrados = useMemo(() => {
     return orcamentos.filter(o => {
         const termoBusca = busca.toLowerCase();
@@ -156,7 +144,6 @@ export function OrcamentosPage() {
   return (
     <div className="min-h-screen bg-slate-50/50 p-8 animate-fadeIn max-w-[1600px] mx-auto pb-24">
       
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4 border-b border-slate-200 pb-6">
         <div>
           <h2 className="text-3xl font-black text-slate-800 flex items-center gap-3">
@@ -170,7 +157,6 @@ export function OrcamentosPage() {
         </button>
       </div>
 
-      {/* DASHBOARD CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-5">
               <div className="p-4 bg-slate-50 text-slate-400 rounded-2xl"><DollarSign size={28}/></div>
@@ -188,7 +174,6 @@ export function OrcamentosPage() {
           </div>
       </div>
 
-      {/* FILTROS */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm mb-6 flex flex-col gap-4">
         <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -223,7 +208,6 @@ export function OrcamentosPage() {
         </div>
       </div>
 
-      {/* LISTA DE ORÇAMENTOS */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
             <table className="w-full text-left whitespace-nowrap">
@@ -263,7 +247,6 @@ export function OrcamentosPage() {
                             <td className="p-5">
                                 <div className="flex items-center justify-center gap-2">
                                     
-                                    {/* STATUS BADGE */}
                                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border 
                                         ${o.status === 'APROVADO' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
                                           o.status === 'REPROVADO' ? 'bg-rose-50 text-rose-700 border-rose-200' : 
@@ -271,7 +254,6 @@ export function OrcamentosPage() {
                                         {o.status}
                                     </span>
 
-                                    {/* BOTÃO DE AÇÃO PRINCIPAL (APROVAR E FATURAR) */}
                                     {o.status === 'PENDENTE' && (
                                         <button 
                                             onClick={() => aprovarEGerarFinanceiro(o)}
@@ -285,7 +267,11 @@ export function OrcamentosPage() {
                                     <div className="w-px h-6 bg-slate-200 mx-2"></div>
 
                                     <button onClick={() => handleOpenEdit(o.id)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Editar"><Edit size={18}/></button>
-                                    <button onClick={() => OrcamentoPdfService.gerar(o.id)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="PDF"><Printer size={18}/></button>
+                                    
+                                    {/* 🚀 BOTÕES DE VER E BAIXAR */}
+                                    <button onClick={() => OrcamentoPdfService.gerar(o.id, 'view')} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Visualizar Proposta na Tela"><Eye size={18}/></button>
+                                    <button onClick={() => OrcamentoPdfService.gerar(o.id, 'download')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Baixar PDF"><DownloadIcon size={18}/></button>
+                                    
                                     <button onClick={() => deleteOrcamento(o.id)} className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Excluir"><Trash2 size={18}/></button>
                                 </div>
                             </td>
@@ -299,7 +285,6 @@ export function OrcamentosPage() {
         </div>
       </div>
       
-      {/* 🚀 5. PROPAGAÇÃO DO INQUILINO PARA O MODAL */}
       <OrcamentoFormModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient';
-import { Shield, CheckCircle2, XCircle } from 'lucide-react';
+import { Shield, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 const CARGOS = ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'];
 const MODULOS = [
@@ -16,37 +16,30 @@ const MODULOS = [
 
 export function PermissoesCargos() {
     const [permissoes, setPermissoes] = useState<any[]>([]);
-    const [tenantId, setTenantId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(true);
 
-    // Fareja a URL para achar o Inquilino Atual
+    // 🚀 CORREÇÃO: Busca Direta e Garantida
     useEffect(() => {
-        const getTenant = async () => {
-            const hostname = window.location.hostname;
-            const parts = hostname.split('.');
-            let slug = 'admin';
-            if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
-                slug = parts[0];
-            }
-            const { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
-            if (data) setTenantId(data.id);
-        };
-        getTenant();
+        fetchPerms();
     }, []);
 
-    useEffect(() => {
-        if (tenantId) fetchPerms();
-    }, [tenantId]);
-
     const fetchPerms = async () => {
-        const { data } = await supabase.from('tenant_permissoes').select('*').eq('tenant_id', tenantId);
-        setPermissoes(data || []);
+        setLoading(true);
+        try {
+            // No modo Configurações Globais (Admin Root), vamos puxar os acessos base (Tenant = 1)
+            const { data, error } = await supabase.from('tenant_permissoes').select('*').eq('tenant_id', 1);
+            if (error) throw error;
+            setPermissoes(data || []);
+        } catch (error) {
+            console.error("Erro ao buscar permissões:", error);
+        } finally {
+            setLoading(false); // 🚀 Destrava a tela
+        }
     };
 
     const togglePermissao = async (cargo: string, modulo: string, atual: boolean) => {
-        if (!tenantId) return;
-        
         const { error } = await supabase.from('tenant_permissoes').upsert({
-            tenant_id: tenantId,
+            tenant_id: 1, // Assumindo Master ID
             nivel_acesso: cargo,
             modulo_id: modulo,
             permitido: !atual
@@ -55,7 +48,7 @@ export function PermissoesCargos() {
         if (!error) fetchPerms();
     };
 
-    if (!tenantId) return <div className="p-8 text-center text-theme-muted">Carregando módulo de segurança...</div>;
+    if (loading) return <div className="p-12 text-center text-theme-muted"><Loader2 className="animate-spin mx-auto mb-4 text-primary-theme" size={32}/> Carregando módulo de segurança...</div>;
 
     return (
         <div className="bg-theme-card rounded-3xl border border-theme shadow-sm overflow-hidden animate-fadeIn">

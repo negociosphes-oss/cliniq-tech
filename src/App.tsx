@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom' 
-import { Menu, X, Loader2, AlertTriangle, ShieldCheck, Activity, Cpu } from 'lucide-react'
+import { Menu, X, Loader2, AlertTriangle, ShieldCheck, Activity, Cpu, Lock, Mail, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { supabase } from './supabaseClient'
 
 // --- SERVIÇOS ---
@@ -28,27 +28,19 @@ import { FinanceiroPage } from './pages/financeiro/FinanceiroPage'
 import { ChecklistPage } from './pages/checklists/ChecklistPage'
 import { MetrologiaPage } from './pages/metrologia/MetrologiaPage' 
 import { AdminGeralPage } from './pages/admin-geral/AdminGeralPage'
+import { EstoquePage } from './pages/estoque/EstoquePage'
 
-// 🚀 NOVA PÁGINA: VITRINE DE VENDAS
+// 🚀 A LANDING PAGE VOLTOU! (SEU MARKETING)
 import { LandingPage } from './pages/landing/LandingPage'
 
 import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, Manual, OrdemServico, LogAuditoria } from './types'
 
-/// 🚀 FAREJADOR DE SUBDOMÍNIO (Ajustado para Domínio Próprio)
+// 🚀 FAREJADOR DE SUBDOMÍNIO
 const getSubdomain = () => {
     const hostname = window.location.hostname;
-    
-    // 1. REGRA DE OURO: Se for o domínio oficial (com ou sem www), força o ID correto
-    if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') {
-        return 'atlasum-sistema'; // Esse é o nome que está gravado no seu banco de dados
-    }
-
-    // 2. Regra antiga para subdomínios (mantida por segurança)
+    if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') return 'atlasum-sistema'; 
     const parts = hostname.split('.');
-    if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
-        return parts[0];
-    }
-    
+    if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') return parts[0];
     return 'atlasum-sistema'; 
 };
 
@@ -63,120 +55,142 @@ function Toast({ message, type, onClose }: { message: string, type: 'success' | 
   )
 }
 
-// 🚀 TELA DE LOGIN ENTERPRISE (SPLIT-SCREEN)
+// 🚀 TELA DE LOGIN PREMIUM (GLASSMORPHISM)
 function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => void, tenant: any }) {
   const [email, setEmail] = useState(''); 
   const [senha, setSenha] = useState(''); 
   const [loading, setLoading] = useState(false);
+  const [horaLocal, setHoraLocal] = useState('');
+
+  useEffect(() => {
+      const hora = new Date().getHours();
+      if(hora < 12) setHoraLocal('Bom dia');
+      else if(hora < 18) setHoraLocal('Boa tarde');
+      else setHoraLocal('Boa noite');
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => { 
       e.preventDefault(); 
       setLoading(true);
       try {
         if (email.trim() === 'admin@atlasum.com.br' && senha.trim() === '123456') { 
-            setTimeout(() => onLoginSuccess({ id: 0, nome: 'CEO / Admin', email: email, cargo: 'admin' }), 800); 
+            setTimeout(() => onLoginSuccess({ id: 0, nome: 'CEO / Admin', email: email, cargo: 'admin' } as Usuario), 800); 
             return; 
         }
-
-        const { data, error } = await supabase.from('usuarios')
-            .select('*')
-            .eq('email', email)
-            .eq('senha', senha)
-            .eq('tenant_id', tenant.id) 
-            .maybeSingle();
-
+        const { data, error } = await supabase.from('usuarios').select('*').eq('email', email).eq('senha', senha).eq('tenant_id', tenant.id).maybeSingle();
         if (error) throw error;
         if (data) setTimeout(() => onLoginSuccess(data), 800); 
         else { alert('Acesso Negado ou Usuário não pertence a esta empresa.'); setLoading(false); }
       } catch (err) { alert('Erro de conexão.'); setLoading(false); }
   }
 
-  const primaryColor = tenant?.cor_primaria || '#1e3a8a';
+  const primaryColor = tenant?.cor_primaria || '#0f172a';
 
   return (
-    <div className="min-h-screen w-full flex bg-slate-50 font-sans">
+    <div className="min-h-screen w-full flex bg-slate-50 font-sans selection:bg-blue-500 selection:text-white">
       
-      {/* LADO ESQUERDO: BRANDING */}
-      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16" style={{ backgroundColor: primaryColor }}>
-         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-white/10 rounded-full blur-[100px]"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-black/20 rounded-full blur-[120px]"></div>
-         <div className="absolute top-[40%] right-[-5%] w-64 h-64 bg-blue-400/20 rounded-full blur-[80px]"></div>
+      {/* 🌌 LADO ESQUERDO: BRANDING (Oculto no Celular) */}
+      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16 bg-slate-900" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #020617 100%)` }}>
+         <div className="absolute top-[-20%] left-[-10%] w-[50rem] h-[50rem] bg-white/5 rounded-full blur-[120px] animate-pulse pointer-events-none"></div>
+         <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
 
          <div className="relative z-10">
-            <div className="flex items-center gap-3 text-white mb-16">
-               <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg">
-                   <Activity size={24} strokeWidth={2.5} />
+            <div className="flex items-center gap-3 text-white mb-20 animate-fadeIn">
+               <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md border border-white/10 shadow-2xl">
+                   <Activity size={24} strokeWidth={2.5} className="text-blue-300" />
                </div>
-               <span className="font-black text-xl tracking-[0.2em] uppercase">Atlasum</span>
+               <span className="font-black text-xl tracking-[0.25em] uppercase text-white/90">Atlasum</span>
             </div>
             
-            <h1 className="text-5xl font-black text-white leading-[1.1] mb-6 tracking-tight">
-              A evolução da sua <br/> <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-white">Engenharia Clínica.</span>
+            <h1 className="text-[3.5rem] font-black text-white leading-[1.1] mb-6 tracking-tight animate-slideUp">
+              Engenharia Clínica <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-indigo-100">sem atrito.</span>
             </h1>
-            <p className="text-white/80 text-lg max-w-md font-medium leading-relaxed">
-              Plataforma all-in-one para gestão de ativos, ordens de serviço e metrologia com precisão de auditoria.
+            <p className="text-white/70 text-lg max-w-md font-medium leading-relaxed animate-slideUp" style={{ animationDelay: '0.1s' }}>
+              O ecossistema definitivo para controle de ativos, manutenções e calibrações do seu parque tecnológico.
             </p>
          </div>
 
-         <div className="relative z-10 flex gap-6 text-white/70">
-            <div className="flex items-center gap-2"><ShieldCheck size={18}/> <span className="text-sm font-bold uppercase tracking-wider">Segurança RBC</span></div>
-            <div className="flex items-center gap-2"><Cpu size={18}/> <span className="text-sm font-bold uppercase tracking-wider">Cloud SaaS</span></div>
+         <div className="relative z-10 flex flex-col gap-4 animate-slideUp" style={{ animationDelay: '0.2s' }}>
+            <div className="flex items-center gap-3 text-white/80 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm max-w-sm">
+                <CheckCircle2 className="text-emerald-400 shrink-0" size={24}/>
+                <div>
+                    <h4 className="font-bold text-sm text-white">Rastreabilidade Total</h4>
+                    <p className="text-xs opacity-70">Aprovado em normas RBC e ONA.</p>
+                </div>
+            </div>
          </div>
       </div>
 
-      {/* LADO DIREITO: FORMULÁRIO DE LOGIN */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white relative overflow-hidden">
-         <div className="absolute top-0 right-0 w-full h-64 bg-gradient-to-b from-slate-100 to-transparent lg:hidden"></div>
+      {/* 🔐 LADO DIREITO: ÁREA DE LOGIN */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative bg-[#f8fafc]">
+         <div className="absolute top-0 left-0 w-full h-64 opacity-20 lg:hidden" style={{ background: `linear-gradient(180deg, ${primaryColor} 0%, transparent 100%)` }}></div>
 
-         <div className="w-full max-w-md animate-fadeIn relative z-10">
+         <div className="w-full max-w-[420px] animate-slideUp relative z-10">
              
              <div className="text-center mb-10">
-                 <div className="flex justify-center mb-8">
-                     {tenant.logo_url ? (
-                         <div className="h-28 flex items-center justify-center p-2">
-                            <img src={tenant.logo_url} alt="Logo" className="h-full w-auto object-contain drop-shadow-md" />
+                 <div className="flex justify-center mb-6">
+                     {/* 🚀 LOGO SINCRONIZADA COM O PAINEL DE CONFIGURAÇÕES */}
+                     {tenant?.logo_url ? (
+                         <div className="h-28 w-auto max-w-[220px] flex items-center justify-center bg-white p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 transition-transform hover:scale-105">
+                            <img src={tenant.logo_url} alt={`Logo ${tenant.nome_fantasia}`} className="h-full w-full object-contain" />
                          </div>
                      ) : (
-                         <div className="h-24 w-24 rounded-[2rem] flex items-center justify-center shadow-xl text-white font-black text-5xl" style={{ backgroundColor: primaryColor }}>
-                             {tenant.nome_fantasia ? tenant.nome_fantasia.charAt(0).toUpperCase() : 'A'}
+                         <div className="h-24 w-24 rounded-[2rem] flex items-center justify-center shadow-xl text-white font-black text-4xl shadow-blue-900/20" style={{ backgroundColor: primaryColor }}>
+                             {tenant?.nome_fantasia ? tenant.nome_fantasia.charAt(0).toUpperCase() : 'A'}
                          </div>
                      )}
                  </div>
-                 <h2 className="text-[32px] font-black text-slate-800 tracking-tight leading-none mb-3">Bem-vindo(a)</h2>
-                 <p className="text-slate-500 font-medium">Acesse o ambiente de gestão exclusivo <br className="hidden sm:block"/> da <strong className="text-slate-800">{tenant.nome_fantasia || 'sua unidade'}</strong>.</p>
+                 <h2 className="text-3xl font-black text-slate-800 tracking-tight mb-2">{horaLocal}!</h2>
+                 <p className="text-slate-500 font-medium text-sm">Acesso restrito ao ambiente da <br className="hidden sm:block"/><strong className="text-slate-700">{tenant?.nome_fantasia || 'unidade'}</strong>.</p>
              </div>
 
-             <form onSubmit={handleLogin} className="flex flex-col gap-5">
-                <div className="flex flex-col gap-2">
-                    <label className="text-[11px] font-black uppercase text-slate-500 tracking-widest ml-1">E-mail corporativo</label>
-                    <input 
-                      className="w-full h-14 px-5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-800 outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium placeholder:text-slate-400" 
-                      value={email} onChange={e => setEmail(e.target.value)} 
-                      placeholder="voce@empresa.com" required 
-                    />
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-end ml-1">
-                        <label className="text-[11px] font-black uppercase text-slate-500 tracking-widest">Senha de acesso</label>
-                        <a href="#" className="text-[11px] font-black text-blue-500 hover:text-blue-700 transition-colors uppercase tracking-widest">Esqueceu?</a>
+             <div className="bg-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100">
+                 <form onSubmit={handleLogin} className="flex flex-col gap-6">
+                    
+                    <div className="space-y-2 group">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 group-focus-within:text-blue-600 transition-colors">E-mail Corporativo</label>
+                        <div className="relative">
+                            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18}/>
+                            <input 
+                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:font-medium placeholder:text-slate-400" 
+                              type="email" value={email} onChange={e => setEmail(e.target.value)} 
+                              placeholder="nome@hospital.com.br" required 
+                            />
+                        </div>
                     </div>
-                    <input 
-                      className="w-full h-14 px-5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-slate-800 outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium placeholder:text-slate-400 tracking-widest" 
-                      type="password" value={senha} onChange={e => setSenha(e.target.value)} 
-                      placeholder="••••••••" required 
-                    />
-                </div>
+                    
+                    <div className="space-y-2 group">
+                        <div className="flex justify-between items-center ml-1">
+                            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest group-focus-within:text-blue-600 transition-colors">Senha de Segurança</label>
+                            <a href="#" className="text-[10px] font-bold text-blue-500 hover:text-blue-700 transition-colors">Recuperar</a>
+                        </div>
+                        <div className="relative">
+                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18}/>
+                            <input 
+                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:text-slate-400 tracking-widest" 
+                              type="password" value={senha} onChange={e => setSenha(e.target.value)} 
+                              placeholder="••••••••" required 
+                            />
+                        </div>
+                    </div>
 
-                <button disabled={loading} className="w-full h-14 mt-2 text-white font-black rounded-2xl transition-all shadow-xl hover:shadow-2xl active:scale-95 disabled:opacity-70 flex items-center justify-center gap-3 group" style={{ backgroundColor: primaryColor }}>
-                    {loading ? <Loader2 className="animate-spin" size={24} /> : 'Acessar Plataforma'}
-                </button>
-             </form>
+                    <button disabled={loading} className="w-full h-14 mt-4 text-white font-black rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 flex items-center justify-center gap-3 relative overflow-hidden group" style={{ backgroundColor: primaryColor }}>
+                        {loading ? (
+                            <Loader2 className="animate-spin" size={22} />
+                        ) : (
+                            <>
+                                <span>Acessar Plataforma</span>
+                                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                            </>
+                        )}
+                    </button>
+                 </form>
+             </div>
              
-             <div className="mt-16 text-center">
-                <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">
-                    Tecnologia provida por <br/>
-                    <span className="text-slate-800 text-xs mt-1 inline-block">Atlas System Medical</span>
+             <div className="mt-10 text-center">
+                <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center justify-center gap-2">
+                    <ShieldCheck size={14}/> Ambiente Seguro e Criptografado
                 </p>
              </div>
          </div>
@@ -195,13 +209,13 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState<{msg: string, type: 'success'|'error'|'info'} | null>(null);
-  const [themeColor, setThemeColor] = useState(tenant.cor_primaria || '#1e3a8a'); 
+  const [themeColor, setThemeColor] = useState(tenant?.cor_primaria || '#1e3a8a'); 
 
   const [config, setConfig] = useState<Config>({ 
-      id: tenant.id, 
-      nome_empresa: tenant.nome_fantasia, 
-      logo_url: tenant.logo_url, 
-      cor_primaria: tenant.cor_primaria || '#1e3a8a', 
+      id: tenant?.id, 
+      nome_empresa: tenant?.nome_fantasia, 
+      logo_url: tenant?.logo_url, 
+      cor_primaria: tenant?.cor_primaria || '#1e3a8a', 
       cor_secundaria: '#f8fafc' 
   });
 
@@ -224,11 +238,11 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   useEffect(() => {
     const inicializarVisual = async () => {
       const pref = await ThemeService.carregarConfiguracaoOficial();
-      setThemeColor(pref.primary || tenant.cor_primaria || '#1e3a8a');
+      setThemeColor(pref.primary || tenant?.cor_primaria || '#1e3a8a');
       setDarkMode(pref.isDark);
-      ThemeService.aplicarTemaNoDOM(pref.primary || tenant.cor_primaria, pref.isDark);
+      ThemeService.aplicarTemaNoDOM(pref.primary || tenant?.cor_primaria, pref.isDark);
     };
-    inicializarVisual();
+    if (tenant) inicializarVisual();
   }, [tenant]);
 
   useEffect(() => { 
@@ -237,6 +251,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   }, [darkMode]);
 
   const fetchAll = useCallback(async () => {
+    if (!tenant) return;
     try {
         const [resCli, resTec, resTcn, resMan, resLogs, resUsr] = await Promise.all([
             supabase.from('clientes').select('*').eq('tenant_id', tenant.id),
@@ -257,7 +272,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
 
         let tecnicosData = resTcn.data || [];
         if (tecnicosData.length === 0 && usuariosData.length > 0) {
-            tecnicosData = usuariosData.map(u => ({ id: u.id, nome: u.nome, especialidade: u.cargo }));
+            tecnicosData = usuariosData.map((u: any) => ({ id: u.id, nome: u.nome, especialidade: u.cargo }));
         }
         setTecnicos(tecnicosData);
 
@@ -269,8 +284,8 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
         if (eqRaw) {
             equipamentosFinal = eqRaw.map(eq => ({
                 ...eq,
-                tecnologia: tecnologiasData.find(t => t.id === eq.tecnologia_id) || null,
-                cliente: clientesData.find(c => c.id === eq.cliente_id) || null,
+                tecnologia: tecnologiasData.find((t: any) => t.id === eq.tecnologia_id) || null,
+                cliente: clientesData.find((c: any) => c.id === eq.cliente_id) || null,
             }));
         }
         setEquipamentos(equipamentosFinal);
@@ -295,7 +310,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
     } finally {
         setLoadingData(false);
     }
-  }, [showToast, tenant.id]);
+  }, [showToast, tenant?.id]);
 
   useEffect(() => { fetchAll() }, [fetchAll]);
 
@@ -326,23 +341,25 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
       />
       
       <div className={`flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full ${isSidebarCollapsed ? 'md:ml-24' : 'md:ml-72'} ml-0`}>
-        <header className="bg-theme-card shadow-sm p-4 flex items-center justify-between md:hidden border-b border-theme z-40">
+        
+        {/* HEADER MOBILE */}
+        <header className="fixed top-0 left-0 w-full h-16 bg-theme-card shadow-sm px-4 flex items-center justify-between md:hidden border-b border-theme z-40">
             <div className="flex items-center gap-3">
                {config.logo_url ? (
                   <img src={config.logo_url} alt="Logo" className="h-8 object-contain" />
                ) : (
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-sm" style={{ backgroundColor: themeColor }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-sm shadow-md" style={{ backgroundColor: themeColor }}>
                       {config.nome_empresa ? config.nome_empresa.charAt(0).toUpperCase() : 'A'}
                   </div>
                )}
-               <h1 className="font-bold text-theme-main">{config.nome_empresa || 'Atlasum'}</h1>
+               <h1 className="font-bold text-theme-main truncate w-40 text-sm">{config.nome_empresa || 'Atlasum'}</h1>
             </div>
             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-theme-page border border-theme text-theme-muted rounded-xl hover:text-primary-theme transition-colors active:scale-95">
                 <Menu size={24}/>
             </button>
         </header>
         
-        <main className="flex-1 overflow-y-auto p-0">
+        <main className="flex-1 overflow-y-auto pt-16 md:pt-0 pb-10">
             <ErrorBoundary>
                 <Routes>
                     <Route path="/" element={<Navigate to="/painel" replace />} />
@@ -350,6 +367,8 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                     <Route path="/equipamentos" element={<EquipamentosPage allOrders={ordens} onOpenNewOS={handleAbrirChamadoDoInventario} onViewOS={handleViewOS} />} />
                     <Route path="/novo-chamado" element={<AberturaChamadoPage equipamentos={equipamentos} clientes={clientes} showToast={showToast} fetchAll={fetchAll} />} />
                     <Route path="/ordens" element={<OrdemServicoPage view="lista_atendimento" setView={() => {}} equipamentos={equipamentos} clientes={clientes} tecnicos={tecnicos} ordens={ordens} fetchAll={fetchAll} onRegisterLog={registrarLog} showToast={showToast} targetOsId={targetOsId} />} />
+                    
+                    <Route path="/estoque" element={<EstoquePage />} />
                     <Route path="/clientes" element={<ClientesPage />} />
                     <Route path="/tecnologias" element={<TecnologiasPage />} />
                     <Route path="/equipe" element={<EquipePage />} />
@@ -362,10 +381,11 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                     <Route path="/checklists" element={<ChecklistPage />} />
                     <Route path="/configuracoes" element={<AdminPage />} />
                     <Route path="/admin-geral" element={<AdminGeralPage />} />
-                    <Route path="*" element={<div className="p-10 text-center text-theme-muted">Página não encontrada (404)</div>} />
+                    <Route path="*" element={<div className="p-10 text-center text-theme-muted mt-20">Página não encontrada (404)</div>} />
                 </Routes>
             </ErrorBoundary>
         </main>
+
         {toast && <Toast message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
       </div>
     </div>
@@ -383,20 +403,30 @@ export default function App() {
         const initTenant = async () => {
             const slug = getSubdomain();
             
-            let { data: tData, error } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
-
-            if (tData && slug === 'admin' && !tData.logo_url) {
-                 const { data: configAntiga } = await supabase.from('configuracoes_empresa').select('logo_url').eq('id', 1).maybeSingle();
-                 if (configAntiga?.logo_url) {
-                     tData.logo_url = configAntiga.logo_url;
-                 }
-            }
+            // 🚀 BUSCA DUPLA DE SEGURANÇA: Inquilino e Configurações Gerais
+            let { data: tData } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
+            const { data: configGeral } = await supabase.from('configuracoes_empresa').select('*').eq('id', 1).maybeSingle();
 
             if (tData) {
+                // 🚀 SINCRONIA: Se for o admin ou se não tiver logo própria, ele PUXA a logo da tela de Configurações
+                if (slug === 'admin' || slug === 'atlasum-sistema' || !tData.logo_url) {
+                     if (configGeral?.logo_url) tData.logo_url = configGeral.logo_url;
+                     if (configGeral?.nome_fantasia) tData.nome_fantasia = configGeral.nome_fantasia;
+                }
+                
                 setTenant(tData);
+                
                 if(tData.status_assinatura === 'bloqueado') {
                     alert('Assinatura Bloqueada. Contate o suporte Atlasum.');
                 }
+            } else if (configGeral) {
+                // 🚀 FALLBACK: Se a tabela de inquilinos estiver vazia, ele monta com as suas configurações gerais
+                setTenant({
+                    id: 1,
+                    nome_fantasia: configGeral.nome_fantasia || 'Atlasum',
+                    logo_url: configGeral.logo_url,
+                    cor_primaria: '#1e3a8a'
+                });
             }
             setLoadingTenant(false);
         };
@@ -435,17 +465,17 @@ export default function App() {
         );
     }
 
-    // 🚀 AQUI A MÁGICA ACONTECE: Roteamento Inteligente
+    // 🚀 ROTEAMENTO CORRIGIDO (COM A LANDING PAGE VIVA E A LOGO CERTA)
     return (
         <ErrorBoundary>
             <Routes>
-                {/* 1. Landing Page na raiz (se não estiver logado) */}
+                {/* Raiz do site: Se não tiver logado, mostra o seu Marketing (Landing Page) */}
                 <Route path="/" element={user ? <Navigate to="/painel" replace /> : <LandingPage />} />
                 
-                {/* 2. Tela de Login Exclusiva */}
+                {/* Rota de acesso ao sistema (Tela de Login Premium) */}
                 <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => setUser(u)} />} />
                 
-                {/* 3. Todo o resto do sistema (Rotas Privadas) */}
+                {/* O resto do sistema (Rotas Privadas) */}
                 <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => setUser(null)} /> : <Navigate to="/login" replace /> } />
             </Routes>
         </ErrorBoundary>

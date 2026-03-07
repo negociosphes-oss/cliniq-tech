@@ -1,6 +1,7 @@
 import { useState, useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
 import SignaturePad from 'react-signature-canvas';
-import { PenTool, Eraser, User, Image as ImageIcon } from 'lucide-react';
+import { PenTool, Eraser, User, Image as ImageIcon, Save, CheckCircle2 } from 'lucide-react';
+import { supabase } from '../../supabaseClient';
 
 interface Props {
   osId: number;
@@ -14,16 +15,21 @@ export interface AssinaturasTabHandle {
   getAssinaturas: () => { tecnico: string | null; cliente: string | null };
 }
 
-export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ status, tecnicos, assinaturaTecnico, assinaturaCliente }, ref) => {
+export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ osId, status, tecnicos, assinaturaTecnico, assinaturaCliente }, ref) => {
   const padTecnico = useRef<SignaturePad>(null);
   const padCliente = useRef<SignaturePad>(null);
 
   const [tecnicoSelecionado, setTecnicoSelecionado] = useState('');
   const [assinaturaAutomatica, setAssinaturaAutomatica] = useState<string | null>(assinaturaTecnico || null);
+  
+  // Controle de salvamento do Cliente
+  const [clienteSalvo, setClienteSalvo] = useState<boolean>(!!assinaturaCliente);
+  const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     setAssinaturaAutomatica(assinaturaTecnico || null);
-  }, [assinaturaTecnico]);
+    setClienteSalvo(!!assinaturaCliente);
+  }, [assinaturaTecnico, assinaturaCliente]);
 
   const handleSelecionarTecnico = (id: string) => {
     setTecnicoSelecionado(id);
@@ -41,12 +47,35 @@ export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ status,
     setTecnicoSelecionado('');
   };
 
-  const limparCliente = () => padCliente.current?.clear();
+  const limparCliente = () => {
+     padCliente.current?.clear();
+     setClienteSalvo(false);
+  };
+
+  // 🚀 NOVO: SALVA A ASSINATURA DO CLIENTE DIRETO NO BANCO
+  const salvarAssinaturaCliente = async () => {
+     if (!padCliente.current || padCliente.current.isEmpty()) {
+         return alert('O cliente precisa assinar antes de salvar.');
+     }
+     
+     setSalvando(true);
+     try {
+         const base64 = padCliente.current.getCanvas().toDataURL('image/png');
+         const { error } = await supabase.from('ordens_servico').update({ assinatura_cliente: base64 }).eq('id', osId);
+         if (error) throw error;
+         
+         setClienteSalvo(true);
+         alert('Assinatura salva e vinculada à O.S. com sucesso!');
+     } catch (err) {
+         alert('Erro ao salvar assinatura do cliente.');
+     } finally {
+         setSalvando(false);
+     }
+  };
 
   useImperativeHandle(ref, () => ({
     getAssinaturas: () => {
       let tecData = assinaturaAutomatica;
-      // Extração direta via Canvas nativo para evitar erro de import/trim
       if (!tecData && padTecnico.current && !padTecnico.current.isEmpty()) {
         const canvas = padTecnico.current.getCanvas();
         tecData = canvas.toDataURL('image/png');
@@ -62,8 +91,7 @@ export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ status,
     }
   }));
 
-  // Bloqueia apenas se a OS já estiver concluída ou se já houver uma assinatura salva no banco
-  const isReadOnly = status === 'Concluída';
+  const isReadOnly = status === 'Concluída' || status === 'Finalizada';
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -106,14 +134,14 @@ export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ status,
           </div>
         </div>
 
-        {/* CLIENTE - AQUI ESTAVA O BLOQUEIO */}
+        {/* CLIENTE - COM BOTÃO SALVAR AGORA */}
         <div className="space-y-3">
           <div className="flex justify-between items-end">
             <label className="text-xs font-black uppercase text-slate-500">Cliente / Aceite *</label>
-            {!isReadOnly && <button onClick={limparCliente} className="text-[10px] font-bold text-rose-500 flex items-center gap-1 hover:text-rose-600"><Eraser size={12}/> Limpar</button>}
+            {!isReadOnly && <button onClick={limparCliente} className="text-[10px] font-bold text-rose-500 flex items-center gap-1 hover:text-rose-600"><Eraser size={12}/> Limpar Quadro</button>}
           </div>
           
-          <div className={`border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 relative overflow-hidden h-40 flex items-center justify-center ${!isReadOnly && !assinaturaCliente ? 'cursor-crosshair' : ''}`}>
+          <div className={`border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 relative overflow-hidden h-40 flex flex-col items-center justify-center ${!isReadOnly && !clienteSalvo ? 'cursor-crosshair' : ''}`}>
             {assinaturaCliente ? (
               <img src={assinaturaCliente} alt="Assinatura Cliente" className="h-full w-full object-contain p-4 mix-blend-multiply" />
             ) : isReadOnly ? (
@@ -122,6 +150,19 @@ export const AssinaturasTab = forwardRef<AssinaturasTabHandle, Props>(({ status,
               <SignaturePad ref={padCliente} canvasProps={{ className: 'w-full h-full' }} />
             )}
           </div>
+
+          {/* 🚀 BOTÃO DE SALVAMENTO PARA O CLIENTE */}
+          {!isReadOnly && (
+             <div className="flex justify-end mt-2">
+                {clienteSalvo ? (
+                   <span className="text-xs font-bold text-emerald-600 flex items-center gap-1"><CheckCircle2 size={16}/> Salva no Banco de Dados</span>
+                ) : (
+                   <button onClick={salvarAssinaturaCliente} disabled={salvando} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-sm">
+                      <Save size={14}/> {salvando ? 'Salvando...' : 'Salvar Assinatura'}
+                   </button>
+                )}
+             </div>
+          )}
         </div>
       </div>
 

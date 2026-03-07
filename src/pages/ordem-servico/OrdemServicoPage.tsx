@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Printer, X, PlayCircle, Loader2, Download } from 'lucide-react';
+import { Printer, X, Loader2, Download } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
 // Documentos e Motores PDF
@@ -19,7 +19,7 @@ import { AssinaturasTab, type AssinaturasTabHandle } from './AssinaturasTab';
 import { FechamentoTab } from './FechamentoTab';
 import { ChecklistTab } from './ChecklistTab'; 
 import { OrdensListagem } from './OrdensListagem';
-import { MetrologiaCertificadoButton } from './components/MetrologiaCertificadoButton';
+import { PecasTab } from './PecasTab';
 
 // ABAS SEPARADAS
 import { MetrologiaTab } from './MetrologiaTab'; 
@@ -34,8 +34,10 @@ interface OrdemServicoPageProps { equipamentos: Equipamento[]; clientes: Cliente
 export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fetchAll, showToast, targetOsId }: OrdemServicoPageProps) {
   const navigate = useNavigate();
   const [selectedOsId, setSelectedOsId] = useState<number | null>(targetOsId || null);
+  
+  const [activeTab, setActiveTab] = useState<'geral' | 'checklist' | 'metrologia' | 'apontamentos' | 'pecas' | 'evidencias' | 'assinaturas' | 'fechamento'>('geral');
+  
   const [osForm, setOsForm] = useState<any>({});
-  const [activeTab, setActiveTab] = useState<'geral' | 'checklist' | 'metrologia' | 'apontamentos' | 'evidencias' | 'assinaturas' | 'fechamento'>('geral');
   const [apontamentos, setApontamentos] = useState<Apontamento[]>([]);
   const [statusExecucaoMetrologia, setStatusExecucaoMetrologia] = useState<string>('');
   
@@ -49,6 +51,10 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
 
   const assinaturasRef = useRef<AssinaturasTabHandle>(null);
   const tabContainerRef = useRef<HTMLDivElement>(null); 
+
+  useEffect(() => {
+    if (tecnicos && tecnicos.length > 0) setEquipeReal(tecnicos);
+  }, [tecnicos]);
 
   useEffect(() => {
     const fetchGlobalData = async () => {
@@ -70,9 +76,6 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
 
         const { data: tipos } = await supabase.from('tipos_ordem_servico').select('*').order('nome');
         if (tipos) setTiposOsDinamicos(tipos);
-
-        const { data: equipe } = await supabase.from('equipe_tecnica').select('*').eq('tenant_id', currentTenantId);
-        if (equipe) setEquipeReal(equipe);
       } catch (err) {}
     };
     fetchGlobalData();
@@ -81,9 +84,26 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
   const refreshDependencies = async (osId: number) => {
     setLoading(true);
     try {
-        const { data: osData } = await supabase.from('ordens_servico').select('*, equipamentos (*, clientes (*))').eq('id', osId).single();
+        // 🚀 VOLTAMOS PARA A BUSCA SEGURA E ESTÁVEL
+        const { data: osData, error } = await supabase.from('ordens_servico').select('*, equipamentos (*, clientes (*))').eq('id', osId).single();
+        
+        if (error) throw error;
+
         if (osData) {
-          setOsForm({ ...osData, equipamento: osData.equipamentos, cliente: osData.equipamentos?.clientes });
+          // 🚀 BUSCA A TECNOLOGIA SEPARADO PARA NÃO QUEBRAR O SISTEMA
+          let tecData = null;
+          if (osData.equipamentos && osData.equipamentos.tecnologia_id) {
+              const { data: tec } = await supabase.from('tecnologias').select('*').eq('id', osData.equipamentos.tecnologia_id).single();
+              tecData = tec;
+          }
+
+          // Junta tudo
+          setOsForm({ 
+              ...osData, 
+              equipamento: { ...osData.equipamentos, tecnologias: tecData }, 
+              cliente: osData.equipamentos?.clientes 
+          });
+
           const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', osId).order('data_inicio');
           setApontamentos(aptData || []);
           
@@ -96,40 +116,74 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
              setStatusExecucaoMetrologia(metro?.status_execucao || '');
           }
         }
-    } catch (err) { } finally { setLoading(false); }
+    } catch (err) { 
+        console.error("Erro ao abrir OS:", err);
+        showToast("Erro ao abrir Ordem de Serviço", "error");
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   useEffect(() => { if (targetOsId) { setSelectedOsId(targetOsId); refreshDependencies(targetOsId); } }, [targetOsId]);
 
   const handleFinalize = async () => {
     try {
-      await supabase.from('ordens_servico').update({ status: 'Concluída' }).eq('id', osForm.id);
+      await supabase.from('ordens_servico').update({ status: 'Concluída', data_fechamento: new Date().toISOString() }).eq('id', osForm.id);
       showToast('O.S. Finalizada com sucesso!', 'success');
       refreshDependencies(osForm.id);
       fetchAll();
     } catch (e) { showToast('Erro ao finalizar.', 'error'); }
   };
 
-  // 🚀 MOTOR 1: IMPRIMIR OS ABERTA
+  // 🚀 FUNÇÃO MASTER SEGURA PARA O PDF
+  const getFullOsDataForPrint = async (osId: number) => {
+     // Busca segura principal
+     const { data: osData } = await supabase.from('ordens_servico').select('*, equipamentos (*, clientes (*))').eq('id', osId).single();
+     
+     // Busca o modelo separado
+     let tecData = null;
+     if (osData?.equipamentos?.tecnologia_id) {
+         const { data: tec } = await supabase.from('tecnologias').select('*').eq('id', osData.equipamentos.tecnologia_id).single();
+         tecData = tec;
+     }
+
+     if (osData && osData.equipamentos) {
+         osData.equipamentos.tecnologias = tecData;
+     }
+
+     const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', osId).order('data_inicio');
+     const { data: pecas } = await supabase.from('estoque_movimentacoes').select('*, estoque_itens(*)').eq('os_id', osId).eq('tipo', 'SAIDA');
+     
+     // Busca o Checklist
+     let checklistData = null;
+     const { data: chkExec } = await supabase.from('os_checklists_execucao').select('*').eq('ordem_servico_id', osId).maybeSingle();
+     if (chkExec && chkExec.checklist_id) {
+         const { data: chkPadrao } = await supabase.from('os_checklists_padrao').select('*').eq('id', chkExec.checklist_id).maybeSingle();
+         if (chkPadrao) {
+             checklistData = { perguntas: chkPadrao.perguntas, respostas: chkExec.respostas || [] };
+         }
+     }
+     
+     return { ...osData, pecas: pecas || [], checklistData, apontamentos: aptData || [] };
+  };
+
   const handlePrintOS = async () => {
     if (!osForm.id) return;
     try {
-      await imprimirRelatorio(osForm, apontamentos, systemConfig);
+      showToast('Gerando relatório...', 'info');
+      const fullData = await getFullOsDataForPrint(osForm.id);
+      await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig);
     } catch (err) { showToast("Erro ao gerar impressão da O.S.", "error"); }
   };
 
-  // 🚀 MOTOR 2: IMPRIMIR RÁPIDO DA LISTA (Sem Tela Branca)
   const handleQuickPrint = async (os: any) => {
-    showToast('Buscando dados da O.S...', 'info');
     try {
-      const { data: osData } = await supabase.from('ordens_servico').select('*, equipamentos (*, clientes (*))').eq('id', os.id).single();
-      const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', os.id).order('data_inicio');
-      const osCompleta = { ...osData, equipamento: osData.equipamentos, cliente: osData.equipamentos?.clientes };
-      await imprimirRelatorio(osCompleta, aptData || [], systemConfig);
+      showToast('Buscando dados da O.S...', 'info');
+      const fullData = await getFullOsDataForPrint(os.id);
+      await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig || {});
     } catch (err) { showToast('Erro ao imprimir O.S.', 'error'); }
   };
   
-  // 🚀 MOTOR 3: BAIXAR CERTIFICADO INDIVIDUAL
   const handleQuickPrintCertificado = async (id: number) => {
     setIsGenerating(true);
     showToast('Gerando documento...', 'info');
@@ -139,11 +193,15 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
 
         if (isTse) {
             const payload = await TseCertificadoService.gerarPayload(id);
-            const blob = await pdf(<TseCertificadoPDF data={payload.data} empresaConfig={payload.empresaConfig} />).toBlob();
+            if (!payload || !payload.data) throw new Error("Laudo não encontrado. Realize o teste primeiro.");
+            
+            const blob = await pdf(<TseCertificadoPDF data={payload.data} empresaConfig={payload.empresaConfig || systemConfig} />).toBlob();
             saveAs(blob, `TSE-OS-${id}.pdf`);
             showToast('Laudo TSE baixado!', 'success');
         } else {
             const payload = await CertificadoService.gerarPayload(id);
+            if (!payload) throw new Error("Certificado não encontrado.");
+
             const blob = await pdf(<MetrologiaCertificadoPDF data={payload} />).toBlob();
             saveAs(blob, `CERTIFICADO-OS-${id}.pdf`);
             showToast('Certificado baixado!', 'success');
@@ -153,28 +211,19 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
     } finally { setIsGenerating(false); }
   };
 
-  // 🚀 MOTOR 4: IMPRESSÃO EM LOTE DE O.S. (O Monstro)
   const handleBulkPrintOs = async (ids: number[]) => {
     showToast(`Gerando lote de ${ids.length} Ordens...`, 'info');
     try {
-      const { data: ordensData } = await supabase.from('ordens_servico').select('*, equipamentos (*, clientes (*))').in('id', ids);
-      if (!ordensData) return;
-      
-      const { data: aptData } = await supabase.from('apontamentos').select('*').in('os_id', ids);
-
-      const ordensCompletas = ordensData.map(o => ({
-         ...o,
-         equipamento: o.equipamentos,
-         cliente: o.equipamentos?.clientes,
-         apontamentos: aptData?.filter(a => a.os_id === o.id) || []
-      }));
-
+      const ordensCompletas = [];
+      for (const id of ids) {
+         const fullData = await getFullOsDataForPrint(id);
+         ordensCompletas.push(fullData);
+      }
       await imprimirRelatoriosEmLote(ordensCompletas, systemConfig);
-      showToast('Lote de O.S. gerado com sucesso!', 'success');
-    } catch (err) { showToast('Erro ao gerar lote de O.S.', 'error'); }
+      showToast('Lote gerado com sucesso!', 'success');
+    } catch (err) { showToast('Erro ao gerar lote.', 'error'); }
   };
 
-  // 🚀 MOTOR 5: IMPRESSÃO EM LOTE DE CERTIFICADOS
   const handleBulkPrintCertificados = async (ids: number[]) => {
     showToast(`Processando ${ids.length} laudos... Pode levar alguns segundos.`, 'info');
     let sucesso = 0;
@@ -186,20 +235,22 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
 
            if (isTse) {
                const payload = await TseCertificadoService.gerarPayload(id);
-               const blob = await pdf(<TseCertificadoPDF data={payload.data} empresaConfig={payload.empresaConfig} />).toBlob();
-               saveAs(blob, `TSE-OS-${id}.pdf`);
-               sucesso++;
+               if(payload && payload.data) {
+                 const blob = await pdf(<TseCertificadoPDF data={payload.data} empresaConfig={payload.empresaConfig || systemConfig} />).toBlob();
+                 saveAs(blob, `TSE-OS-${id}.pdf`);
+                 sucesso++;
+               }
            } else {
                const payload = await CertificadoService.gerarPayload(id);
-               const blob = await pdf(<MetrologiaCertificadoPDF data={payload} />).toBlob();
-               saveAs(blob, `CERTIFICADO-OS-${id}.pdf`);
-               sucesso++;
+               if(payload) {
+                 const blob = await pdf(<MetrologiaCertificadoPDF data={payload} />).toBlob();
+                 saveAs(blob, `CERTIFICADO-OS-${id}.pdf`);
+                 sucesso++;
+               }
            }
-       } catch (err) {
-           console.error(`Erro na OS ${id}`, err);
-       }
+       } catch (err) {}
     }
-    showToast(`${sucesso} laudos baixados com sucesso!`, 'success');
+    showToast(`${sucesso} laudos gerados com sucesso!`, 'success');
   };
 
   const changeTabAndScroll = (tab: any) => { setActiveTab(tab); if (tabContainerRef.current) tabContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
@@ -213,53 +264,54 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
 
     return (
       <div className="max-w-[1600px] mx-auto p-4 animate-fadeIn pb-24" ref={tabContainerRef}>
-         <div className="bg-theme-card p-6 rounded-t-[32px] border-b border-theme flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+         <div className="bg-white border border-slate-200 p-6 rounded-t-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
             <div>
-                <h2 className="text-3xl font-black text-theme-main uppercase tracking-tight">{nomeEmpresa}</h2>
-                <div className="flex gap-2 mt-2">
-                   <span className="px-3 py-1 bg-theme-page border border-theme rounded-lg text-[10px] font-black uppercase text-theme-muted">OS #{osForm.id}</span>
-                   <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase text-white ${osForm.status === 'Concluída' ? 'bg-emerald-600' : 'bg-blue-600'}`}>{osForm.status}</span>
+                <h2 className="text-2xl font-bold text-slate-800 tracking-tight">{nomeEmpresa}</h2>
+                <div className="flex gap-2 mt-2 items-center">
+                   <span className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded text-xs font-semibold text-slate-600">OS #{osForm.id}</span>
+                   <span className={`px-2.5 py-1 rounded text-xs font-semibold text-white ${osForm.status === 'Concluída' ? 'bg-emerald-600' : 'bg-blue-600'}`}>{osForm.status}</span>
                 </div>
             </div>
             
             <div className="flex flex-wrap items-center gap-2">
-                <button onClick={handlePrintOS} className="flex items-center gap-2 px-5 py-3 bg-theme-page text-theme-muted border border-theme rounded-xl text-[11px] font-black hover:text-primary-theme hover:border-primary-theme transition-all uppercase">
+                <button onClick={handlePrintOS} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm">
                     <Printer size={16}/> Imprimir O.S.
                 </button>
 
                 {exigeLaudo && (
                   <button 
                      onClick={() => handleQuickPrintCertificado(osForm.id)} 
-                     disabled={!laudoPronto || isGenerating}
-                     className="flex items-center gap-2 px-5 py-3 bg-primary-theme text-white rounded-xl text-[11px] font-black shadow-lg hover:scale-105 transition-all uppercase disabled:opacity-50 disabled:hover:scale-100"
+                     disabled={isGenerating}
+                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
                   >
                      {isGenerating ? <Loader2 size={16} className="animate-spin"/> : <Download size={16}/>}
                      {isTse ? 'Laudo TSE' : 'Certificado RBC'}
                   </button>
                 )}
 
-                <div className="w-px h-8 bg-theme mx-2 hidden md:block"></div>
-                <button onClick={handleCloseOs} className="px-4 py-3 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl font-bold hover:bg-rose-500 hover:text-white transition-all"><X size={18}/></button>
+                <div className="w-px h-6 bg-slate-200 mx-2 hidden md:block"></div>
+                <button onClick={handleCloseOs} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"><X size={20}/></button>
             </div>
          </div>
 
-         <div className="bg-theme-page p-1 flex gap-1 border-b border-theme overflow-x-auto">
+         <div className="bg-slate-50 p-1 flex gap-1 border-x border-b border-slate-200 overflow-x-auto">
             {[ 
                { id: 'geral', label: 'Geral' }, 
                { id: 'checklist', label: 'Inspeção' }, 
                ...(exigeLaudo ? [{ id: 'metrologia', label: isTse ? 'Seg. Elétrica' : 'Metrologia' }] : []), 
                { id: 'apontamentos', label: 'Mão de Obra' }, 
+               { id: 'pecas', label: 'Peças/Materiais' }, 
                { id: 'evidencias', label: 'Fotos' }, 
                { id: 'assinaturas', label: 'Assinaturas' }, 
                { id: 'fechamento', label: 'Finalizar' } 
             ].map(tab => (
-               <button key={tab.id} onClick={() => changeTabAndScroll(tab.id as any)} className={`flex-1 min-w-[120px] py-4 font-black uppercase text-[10px] rounded-t-[20px] ${activeTab === tab.id ? 'bg-theme-card text-primary-theme border-t-4 border-primary-theme' : 'text-theme-muted hover:bg-theme-card/50'}`}>{tab.label}</button>
+               <button key={tab.id} onClick={() => changeTabAndScroll(tab.id as any)} className={`flex-1 min-w-[120px] py-3 text-xs font-semibold uppercase tracking-wider rounded-t-lg transition-colors ${activeTab === tab.id ? 'bg-white text-indigo-600 border-t-2 border-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{tab.label}</button>
             ))}
          </div>
 
-         <div className="bg-theme-card p-8 rounded-b-[32px] shadow-2xl border border-theme border-t-0 pb-10">
+         <div className="bg-white p-8 rounded-b-2xl shadow-sm border border-slate-200 border-t-0 pb-10 min-h-[400px]">
             <div className={activeTab === 'geral' ? 'block' : 'hidden'}><GeralTab osForm={osForm} setOsForm={setOsForm} tecnicos={equipeReal} status={osForm.status} tiposOs={tiposOsDinamicos} /></div>
-            <div className={activeTab === 'checklist' ? 'block' : 'hidden'}>{osForm.id && osForm.equipamento_id && <ChecklistTab osId={osForm.id} equipamentoId={osForm.equipamento_id} tipoServico={osForm.tipo} showToast={showToast} />}</div>
+            <div className={activeTab === 'checklist' ? 'block' : 'hidden'}><ChecklistTab osId={osForm.id} equipamentoId={osForm.equipamento_id} tipoServico={osForm.tipo} showToast={showToast} /></div>
             
             <div className={activeTab === 'metrologia' ? 'block' : 'hidden'}>
                {osForm.id && osForm.equipamento_id && (
@@ -272,6 +324,11 @@ export function OrdemServicoPage({ equipamentos, clientes, tecnicos, ordens, fet
             </div>
 
             <div className={activeTab === 'apontamentos' ? 'block' : 'hidden'}><ApontamentosTab osId={osForm.id!} tecnicos={equipeReal} status={osForm.status} showToast={showToast} onUpdate={() => refreshDependencies(osForm.id!)} /></div>
+            
+            <div className={activeTab === 'pecas' ? 'block' : 'hidden'}>
+               <PecasTab osId={osForm.id!} status={osForm.status} showToast={showToast} />
+            </div>
+
             <div className={activeTab === 'evidencias' ? 'block' : 'hidden'}><EvidenciasTab osId={osForm.id!} currentAnexos={osForm.anexos} showToast={showToast} onUpdate={() => refreshDependencies(osForm.id!)} /></div>
             <div className={activeTab === 'assinaturas' ? 'block' : 'hidden'}><AssinaturasTab ref={assinaturasRef} osId={osForm.id!} status={osForm.status} tecnicos={equipeReal} assinaturaTecnico={osForm.assinatura_tecnico} assinaturaCliente={osForm.assinatura_cliente} /></div>
             <div className={activeTab === 'fechamento' ? 'block' : 'hidden'}><FechamentoTab osForm={osForm} setOsForm={setOsForm} apontamentos={apontamentos} onFinalize={handleFinalize} status={osForm.status} onPrint={handlePrintOS} showToast={showToast} /></div>
