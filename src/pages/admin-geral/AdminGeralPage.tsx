@@ -58,7 +58,7 @@ export function AdminGeralPage() {
 
     useEffect(() => { fetchTenants(); }, []);
 
-    // Formata o Subdomínio em tempo real (remove espaços e caracteres especiais)
+    // Formata o Subdomínio em tempo real
     const handleSlugChange = (e: any) => {
         const slugFormatado = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/\s+/g, '-');
         setFormData({ ...formData, slug_subdominio: slugFormatado });
@@ -123,6 +123,31 @@ export function AdminGeralPage() {
         if (!error) fetchTenants();
     };
 
+    // 🚀 FUNÇÃO PARA MONTAR O LINK DO CLIENTE CORRETAMENTE (Local ou Nuvem)
+    const getClientUrl = (slug: string) => {
+        const hostname = window.location.hostname;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        const protocol = window.location.protocol;
+
+        // Se estiver rodando localmente (localhost ou IPs locais)
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+            return `${protocol}//${slug}.localhost${port}`;
+        }
+        
+        // Se estiver na nuvem, troca o subdomínio raiz pelo subdomínio do cliente
+        // Assume que a URL base é do tipo: atlasum.com.br, admin.atlasum.com.br, atlasum-sistema.netlify.app
+        const parts = hostname.split('.');
+        
+        // Se tiver mais de 2 partes (ex: admin.meusite.com.br), remove o primeiro (admin)
+        if(parts.length > 2) {
+             parts.shift();
+             return `${protocol}//${slug}.${parts.join('.')}${port}`;
+        }
+        
+        // Se for só meusite.com.br
+        return `${protocol}//${slug}.${hostname}${port}`;
+    };
+
     const filtrados = tenants.filter(t => t.nome_fantasia?.toLowerCase().includes(busca.toLowerCase()) || t.slug_subdominio?.toLowerCase().includes(busca.toLowerCase()));
 
     return (
@@ -139,7 +164,7 @@ export function AdminGeralPage() {
                     <p className="text-theme-muted font-bold mt-2 opacity-80 uppercase tracking-widest text-xs">Torre de Controle de Assinantes</p>
                 </div>
                 
-                {/* 🚀 BOTÃO NOVO ASSINANTE */}
+                {/* BOTÃO NOVO ASSINANTE */}
                 <button 
                     onClick={() => setIsModalOpen(true)}
                     className="bg-primary-theme text-white px-6 py-3 rounded-xl font-black flex items-center gap-2 shadow-xl hover:opacity-90 transition-transform active:scale-95"
@@ -224,7 +249,8 @@ export function AdminGeralPage() {
                                     <td className="p-5 pr-6 text-right">
                                         {tenant.id !== 1 && (
                                             <div className="flex items-center justify-end gap-2">
-                                                <a href={`http://${tenant.slug_subdominio}.localhost:5173`} target="_blank" rel="noreferrer" className="p-2.5 text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all" title="Acessar Portal do Cliente">
+                                                {/* 🚀 O BOTÃO MÁGICO DE SUPORTE */}
+                                                <a href={getClientUrl(tenant.slug_subdominio)} target="_blank" rel="noreferrer" className="p-2.5 text-blue-500 hover:bg-blue-500/10 rounded-xl transition-all" title="Acessar Portal do Cliente para Suporte">
                                                     <ExternalLink size={18}/>
                                                 </a>
                                                 <button 
@@ -244,7 +270,7 @@ export function AdminGeralPage() {
                 </div>
             </div>
 
-            {/* 🚀 MODAL DE NOVO ASSINANTE (PRESTADOR) */}
+            {/* MODAL DE NOVO ASSINANTE (PRESTADOR) */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[999] flex items-center justify-center p-4">
                     <div className="bg-theme-card w-full max-w-2xl rounded-[2rem] shadow-2xl border border-theme overflow-hidden animate-slideUp flex flex-col max-h-[90vh]">

@@ -41,8 +41,11 @@ export function Sidebar({
   useEffect(() => {
     const carregarPermissoes = async () => {
         if (!user || !config?.id) return;
-        const role = user.nivel_acesso || (user.cargo?.toLowerCase().includes('admin') || user.nome === 'CEO / Admin' ? 'master' : 'usuario');
-        if (role === 'master') return;
+        
+        // Pega o nível de acesso real do banco (Master, Gestor, Tecnico, etc)
+        const role = user.nivel_acesso || 'usuario';
+        
+        if (role === 'master') return; // Master não precisa carregar matriz, ele vê tudo da empresa dele.
 
         const { data, error } = await supabase
             .from('tenant_permissoes')
@@ -61,8 +64,7 @@ export function Sidebar({
   const handleThemeChange = (theme: any) => {
       setThemeColor(theme.primary);
       ThemeService.salvarNovoTema(theme.id, theme.primary);
-      // 🚀 Força sempre o modo claro (false) ao trocar a cor
-      ThemeService.aplicarTemaNoDOM(theme.primary, false);
+      ThemeService.aplicarTemaNoDOM(theme.primary, false); // Força Light Mode
   };
 
   const menuItems = [
@@ -89,32 +91,51 @@ export function Sidebar({
     { id: 'admin-geral', label: 'Admin Geral (SaaS)', icon: Globe },
   ];
 
+  // 🚀 O NOVO CÃO DE GUARDA DE PERMISSÕES
   const temAcesso = (moduloId: string) => {
-      const role = user?.nivel_acesso || (user?.cargo?.toLowerCase().includes('admin') || user?.nome === 'CEO / Admin' ? 'master' : 'usuario');
-      if (moduloId === 'admin-geral') return config?.id === 1 && role === 'master';
+      const role = user?.nivel_acesso || 'usuario'; // Se estiver vazio, bloqueia como usuário comum.
+
+      // 1. BLINDAGEM MÁXIMA: Admin Geral (SaaS)
+      if (moduloId === 'admin-geral') {
+          const host = window.location.hostname;
+          // Só libera se o subdomínio for exatamente o da Atlasum (dona do sistema)
+          const isAtlasumRoot = host.includes('atlasum-sistema') || host.includes('admin') || host === 'localhost';
+          
+          // Se for o painel de um cliente (ex: tecmedeng), BLOQUEIA IMEDIATAMENTE.
+          if (host.includes('tecmedeng') || (!host.includes('atlasum-sistema') && host !== 'localhost')) {
+              return false; 
+          }
+          
+          return role === 'master' && isAtlasumRoot;
+      }
+
+      // 2. Se for o "Dono/Master" da clínica atual, ele vê o resto do sistema dele.
       if (role === 'master') return true;
 
+      // 3. Permissões Dinâmicas (O que você marcou na Matriz de Acesso)
       const permDb = permissoesDinamicas.find(p => p.modulo_id === moduloId);
       if (permDb) return permDb.permitido;
 
+      // 4. Regras Rígidas Padrão (Se a matriz não estiver configurada)
       const regrasPadrao: Record<string, string[]> = {
           'painel': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
-          'indicadores': ['administrativo', 'gestor'],
           'novo-chamado': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
-          'ordens': ['administrativo', 'gestor', 'tecnico', 'usuario'],
-          'equipamentos': ['administrativo', 'gestor', 'tecnico', 'usuario'],
-          'estoque': ['administrativo', 'gestor', 'tecnico'],
-          'tecnologias': ['gestor'],
+          'ordens': ['administrativo', 'gestor', 'tecnico', 'cliente'],
+          'equipamentos': ['administrativo', 'gestor', 'tecnico', 'cliente'],
+          'manuais': ['administrativo', 'gestor', 'tecnico', 'cliente'],
+          'indicadores': ['administrativo', 'gestor'],
           'cronograma': ['administrativo', 'gestor', 'tecnico'],
           'metrologia': ['gestor', 'tecnico'],
-          'checklists': ['gestor'],
-          'manuais': ['administrativo', 'gestor', 'tecnico', 'usuario'],
+          'checklists': ['gestor', 'tecnico'],
+          'estoque': ['administrativo', 'gestor'], // Técnico não vê estoque por padrão
+          'tecnologias': ['gestor'],
           'clientes': ['administrativo', 'gestor'],
           'orcamentos': ['administrativo', 'gestor'],
           'financeiro': ['administrativo'],
           'equipe': ['administrativo', 'gestor'],
-          'configuracoes': [] 
+          'configuracoes': [] // APENAS Master pode ver as configurações
       };
+      
       return regrasPadrao[moduloId]?.includes(role) || false;
   };
 
@@ -134,9 +155,7 @@ export function Sidebar({
         />
       )}
 
-      <aside 
-        className={`fixed inset-y-0 left-0 z-[70] flex flex-col transition-all duration-500 bg-theme-card border-r border-theme shadow-2xl md:shadow-none ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isCollapsed ? 'md:w-24 w-72' : 'w-72'}`}
-      >
+      <aside className={`fixed inset-y-0 left-0 z-[70] flex flex-col transition-all duration-500 bg-theme-card border-r border-theme shadow-2xl md:shadow-none ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isCollapsed ? 'md:w-24 w-72' : 'w-72'}`}>
           <div className="h-24 flex items-center justify-between px-6 shrink-0 relative overflow-hidden">
               {(!isCollapsed || window.innerWidth < 768) ? (
                 <div className="flex items-center gap-3 animate-fadeIn">
@@ -219,8 +238,8 @@ export function Sidebar({
                 </div>
               )}
               <div className="flex flex-col gap-1 mb-4 px-2 py-3 bg-theme-page/30 border border-theme rounded-2xl hidden md:flex">
-                  <span className="text-[9px] font-black uppercase text-theme-muted tracking-wider text-center">{user?.nivel_acesso || (user?.nome === 'CEO / Admin' ? 'master' : 'usuario')}</span>
-                  <span className="text-xs font-bold text-theme-main text-center truncate">{user?.nome || 'Utilizador'}</span>
+                  <span className="text-[9px] font-black uppercase text-theme-muted tracking-wider text-center">{user?.nivel_acesso || 'Usuário'}</span>
+                  <span className="text-xs font-bold text-theme-main text-center truncate">{user?.nome || 'Logado'}</span>
               </div>
               <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-4 text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all duration-300 active:scale-95">
                   <LogOut size={18} strokeWidth={2} className="group-hover:-translate-x-1 transition-transform" />
