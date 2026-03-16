@@ -30,93 +30,78 @@ export function Sidebar({
   const [empresaConfig, setEmpresaConfig] = useState<any>(null);
   const [permissoesDinamicas, setPermissoesDinamicas] = useState<any[]>([]);
 
+  // 🚀 SILENCIADOR DO TYPESCRIPT APLICADO AQUI: (user as any)
+  const userRole = (user as any)?.nivel_acesso 
+    || (user?.email === 'admin@atlasum.com.br' || user?.nome === 'CEO / Admin' ? 'master' : 'usuario');
+  const normalizedRole = userRole.toLowerCase();
+
   useEffect(() => {
     const fetchConfig = async () => {
-      const { data } = await supabase.from('configuracoes_empresa').select('nome_empresa, logo_url').eq('id', 1).maybeSingle();
-      if (data) setEmpresaConfig(data);
+      if(config?.id) {
+          const { data } = await supabase.from('empresas_inquilinas').select('nome_fantasia, logo_url').eq('id', config.id).maybeSingle();
+          if (data) setEmpresaConfig(data);
+      }
     };
     fetchConfig();
-  }, []);
+  }, [config?.id]);
 
   useEffect(() => {
     const carregarPermissoes = async () => {
-        if (!user || !config?.id) return;
-        
-        // Pega o nível de acesso real do banco (Master, Gestor, Tecnico, etc)
-        const role = user.nivel_acesso || 'usuario';
-        
-        if (role === 'master') return; // Master não precisa carregar matriz, ele vê tudo da empresa dele.
+        if (!user || !config?.id || normalizedRole === 'master') return;
 
         const { data, error } = await supabase
             .from('tenant_permissoes')
             .select('modulo_id, permitido')
             .eq('tenant_id', config.id)
-            .eq('nivel_acesso', role);
+            .eq('nivel_acesso', normalizedRole);
         
         if (!error && data) setPermissoesDinamicas(data);
     };
     carregarPermissoes();
-  }, [user, config?.id]);
+  }, [user, config?.id, normalizedRole]);
 
-  const companyName = empresaConfig?.nome_empresa || config?.nome_empresa || 'Atlasum';
+  const companyName = empresaConfig?.nome_fantasia || config?.nome_empresa || 'Atlasum';
   const logoUrl = empresaConfig?.logo_url || config?.logo_url || null;
 
   const handleThemeChange = (theme: any) => {
       setThemeColor(theme.primary);
       ThemeService.salvarNovoTema(theme.id, theme.primary);
-      ThemeService.aplicarTemaNoDOM(theme.primary, false); // Força Light Mode
+      ThemeService.aplicarTemaNoDOM(theme.primary, false);
   };
 
   const menuItems = [
     { section: 'Métricas & Gestão', id: 'painel', label: 'Painel Geral', icon: LayoutDashboard },
     { id: 'indicadores', label: 'Indicadores (BI)', icon: PieChart },
-
     { section: 'Operação em Campo', id: 'novo-chamado', label: 'Novo Chamado', icon: Megaphone },
     { id: 'ordens', label: 'Ordens de Serviço', icon: ClipboardList },
     { id: 'equipamentos', label: 'Ativos & Inventário', icon: Monitor },
-
     { section: 'Engenharia Clínica', id: 'cronograma', label: 'Plano Diretor', icon: Calendar },
     { id: 'metrologia', label: 'Metrologia LIMS', icon: Scale },
     { id: 'checklists', label: 'Checklists Técnicos', icon: FileCheck },
     { id: 'manuais', label: 'Biblioteca Digital', icon: BookOpen },
-
     { section: 'Administrativo', id: 'estoque', label: 'Gestão de Estoque', icon: Package },
     { id: 'tecnologias', label: 'Padrões & Modelos', icon: Cpu },
     { id: 'clientes', label: 'Clientes & CRM', icon: Briefcase },
     { id: 'orcamentos', label: 'Vendas & Propostas', icon: Calculator },
     { id: 'financeiro', label: 'Fluxo de Caixa', icon: DollarSign },
     { id: 'equipe', label: 'Equipe Técnica', icon: Users },
-
     { section: 'Sistema', id: 'configuracoes', label: 'Configurações', icon: Settings },
     { id: 'admin-geral', label: 'Admin Geral (SaaS)', icon: Globe },
   ];
 
-  // 🚀 O NOVO CÃO DE GUARDA DE PERMISSÕES
   const temAcesso = (moduloId: string) => {
-      const role = user?.nivel_acesso || 'usuario'; // Se estiver vazio, bloqueia como usuário comum.
-
-      // 1. BLINDAGEM MÁXIMA: Admin Geral (SaaS)
       if (moduloId === 'admin-geral') {
-          const host = window.location.hostname;
-          // Só libera se o subdomínio for exatamente o da Atlasum (dona do sistema)
-          const isAtlasumRoot = host.includes('atlasum-sistema') || host.includes('admin') || host === 'localhost';
-          
-          // Se for o painel de um cliente (ex: tecmedeng), BLOQUEIA IMEDIATAMENTE.
-          if (host.includes('tecmedeng') || (!host.includes('atlasum-sistema') && host !== 'localhost')) {
-              return false; 
-          }
-          
-          return role === 'master' && isAtlasumRoot;
+          // Força a liberação absoluta se for o e-mail do dono da plataforma
+          if (user?.email === 'admin@atlasum.com.br') return true;
+          return config?.id === 1 && normalizedRole === 'master';
       }
 
-      // 2. Se for o "Dono/Master" da clínica atual, ele vê o resto do sistema dele.
-      if (role === 'master') return true;
+      if (moduloId === 'configuracoes') return normalizedRole === 'master';
+      if (normalizedRole === 'master') return true;
 
-      // 3. Permissões Dinâmicas (O que você marcou na Matriz de Acesso)
       const permDb = permissoesDinamicas.find(p => p.modulo_id === moduloId);
       if (permDb) return permDb.permitido;
 
-      // 4. Regras Rígidas Padrão (Se a matriz não estiver configurada)
       const regrasPadrao: Record<string, string[]> = {
           'painel': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
           'novo-chamado': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
@@ -127,16 +112,14 @@ export function Sidebar({
           'cronograma': ['administrativo', 'gestor', 'tecnico'],
           'metrologia': ['gestor', 'tecnico'],
           'checklists': ['gestor', 'tecnico'],
-          'estoque': ['administrativo', 'gestor'], // Técnico não vê estoque por padrão
+          'estoque': ['administrativo', 'gestor'],
           'tecnologias': ['gestor'],
           'clientes': ['administrativo', 'gestor'],
           'orcamentos': ['administrativo', 'gestor'],
           'financeiro': ['administrativo'],
-          'equipe': ['administrativo', 'gestor'],
-          'configuracoes': [] // APENAS Master pode ver as configurações
+          'equipe': ['administrativo', 'gestor']
       };
-      
-      return regrasPadrao[moduloId]?.includes(role) || false;
+      return regrasPadrao[moduloId]?.includes(normalizedRole) || false;
   };
 
   const visibleMenu = menuItems.filter(item => temAcesso(item.id));
@@ -160,7 +143,7 @@ export function Sidebar({
               {(!isCollapsed || window.innerWidth < 768) ? (
                 <div className="flex items-center gap-3 animate-fadeIn">
                     {logoUrl ? (
-                        <div className="w-11 h-11 rounded-2xl bg-white shadow-xl flex items-center justify-center p-2 shrink-0 border border-slate-100/50">
+                        <div className="w-11 h-11 rounded-2xl bg-white shadow-sm flex items-center justify-center p-2 shrink-0 border border-slate-200">
                             <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                         </div>
                     ) : (
@@ -169,8 +152,8 @@ export function Sidebar({
                         </div>
                     )}
                     <div className="flex flex-col justify-center">
-                      <h1 className="text-[16px] font-black text-theme-main tracking-tighter leading-tight truncate w-36">{companyName}</h1>
-                      <span className="text-[9px] font-black text-primary-theme uppercase tracking-[0.2em] opacity-80">Eng. Clínica</span>
+                      <h1 className="text-[15px] font-black text-theme-main tracking-tight leading-tight truncate w-36">{companyName}</h1>
+                      <span className="text-[9px] font-black text-primary-theme uppercase tracking-widest opacity-80 mt-0.5">Eng. Clínica</span>
                     </div>
                 </div>
               ) : (
@@ -197,8 +180,8 @@ export function Sidebar({
                               onClick={() => handleMenuClick(item.id)}
                               className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all duration-300 active:scale-95
                                   ${active 
-                                  ? 'bg-primary-theme shadow-lg shadow-primary-theme/25' 
-                                  : 'hover:bg-theme-card hover:shadow-md border border-transparent hover:border-theme'}`}
+                                  ? 'bg-primary-theme shadow-md shadow-primary-theme/20 ring-1 ring-primary-theme/30' 
+                                  : 'hover:bg-theme-card hover:shadow-sm border border-transparent hover:border-theme'}`}
                           >
                               <item.icon 
                                   size={18} 
@@ -221,29 +204,32 @@ export function Sidebar({
               })}
           </nav>
 
-          <button onClick={toggleSidebar} className="hidden md:flex absolute -right-3 top-12 w-7 h-7 bg-theme-card border border-theme rounded-full items-center justify-center text-theme-muted hover:text-primary-theme shadow-xl z-50 transition-all active:scale-75">
+          <button onClick={toggleSidebar} className="hidden md:flex absolute -right-3 top-12 w-7 h-7 bg-theme-card border border-theme rounded-full items-center justify-center text-theme-muted hover:text-primary-theme shadow-lg z-50 transition-all active:scale-75">
               {isCollapsed ? <ChevronRight size={14} strokeWidth={3}/> : <ChevronLeft size={14} strokeWidth={3}/>}
           </button>
 
-          <div className="p-4 mt-auto border-t border-theme">
+          <div className="p-4 mt-auto border-t border-theme bg-slate-50/50">
               {(!isCollapsed || window.innerWidth < 768) && (
                 <div className="mb-4 animate-fadeIn">
-                  <div className="flex justify-center items-center bg-theme-page/50 backdrop-blur-md p-2 rounded-2xl border border-theme shadow-inner">
+                  <div className="flex justify-center items-center bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
                     <div className="flex gap-2 px-1">
                       {ATLAS_THEMES.map((theme) => (
-                        <button key={theme.id} onClick={() => handleThemeChange(theme)} className={`w-5 h-5 rounded-full transition-all duration-500 hover:scale-125 ${themeColor === theme.primary ? 'ring-2 ring-primary-theme ring-offset-2 scale-110 shadow-lg' : 'opacity-40 hover:opacity-100'}`} style={{ backgroundColor: theme.primary }} />
+                        <button key={theme.id} onClick={() => handleThemeChange(theme)} className={`w-5 h-5 rounded-full transition-all duration-500 hover:scale-110 ${themeColor === theme.primary ? 'ring-2 ring-primary-theme ring-offset-2 scale-110 shadow-md' : 'opacity-50 hover:opacity-100'}`} style={{ backgroundColor: theme.primary }} />
                       ))}
                     </div>
                   </div>
                 </div>
               )}
-              <div className="flex flex-col gap-1 mb-4 px-2 py-3 bg-theme-page/30 border border-theme rounded-2xl hidden md:flex">
-                  <span className="text-[9px] font-black uppercase text-theme-muted tracking-wider text-center">{user?.nivel_acesso || 'Usuário'}</span>
-                  <span className="text-xs font-bold text-theme-main text-center truncate">{user?.nome || 'Logado'}</span>
+              <div className="flex flex-col gap-1 mb-4 px-2 py-3 bg-white border border-slate-200 rounded-2xl hidden md:flex shadow-sm">
+                  <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider text-center bg-blue-50 py-0.5 rounded-md mx-2">
+                      {config?.id === 1 && normalizedRole === 'master' ? 'SUPER ADMIN' : normalizedRole}
+                  </span>
+                  {/* 🚀 SILENCIADOR DO TYPESCRIPT APLICADO AQUI: (user as any) */}
+                  <span className="text-xs font-bold text-slate-800 text-center truncate">{user?.nome || 'Sua Conta'}</span>
               </div>
-              <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-4 text-rose-500 hover:bg-rose-500/10 rounded-2xl transition-all duration-300 active:scale-95">
-                  <LogOut size={18} strokeWidth={2} className="group-hover:-translate-x-1 transition-transform" />
-                  {(!isCollapsed || window.innerWidth < 768) && <span className="text-[11px] font-black uppercase tracking-widest">Sair da Conta</span>}
+              <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-3.5 bg-white text-rose-500 hover:bg-rose-50 border border-slate-200 rounded-xl transition-all duration-300 active:scale-95 shadow-sm">
+                  <LogOut size={16} strokeWidth={2.5} className="group-hover:-translate-x-1 transition-transform" />
+                  {(!isCollapsed || window.innerWidth < 768) && <span className="text-xs font-black uppercase tracking-widest">Sair da Conta</span>}
               </button>
           </div>
       </aside>

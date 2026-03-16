@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Search, Filter, CheckSquare, Square, Download, History, Wrench, CheckCircle, Calendar, Activity, ExternalLink } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, Printer, Eye, Edit3, ArrowUpDown, ChevronDown, ChevronUp, CheckSquare, Square, Filter } from 'lucide-react';
+import { supabase } from '../../../supabaseClient';
+import { RelatorioOSService } from '../../../services/RelatorioOSService';
 
 interface Props { equipamento: any; historico: any[]; loading: boolean; }
 
@@ -8,121 +10,186 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroDataInicio, setFiltroDataInicio] = useState('');
   const [filtroDataFim, setFiltroDataFim] = useState('');
+  
+  const [linhasPorPagina, setLinhasPorPagina] = useState(10);
   const [selectedOsIds, setSelectedOsIds] = useState<number[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
+  const [configEmpresa, setConfigEmpresa] = useState<any>(null);
 
-  const historicoFiltrado = historico.filter(os => {
-      const matchBusca = os.id.toString().includes(filtroBusca) || (os.defeito_relatado || '').toLowerCase().includes(filtroBusca.toLowerCase());
-      const matchTipo = filtroTipo ? os.tipo === filtroTipo : true;
-      const dataOs = new Date(os.created_at);
-      const matchInicio = filtroDataInicio ? dataOs >= new Date(filtroDataInicio) : true;
-      const matchFim = filtroDataFim ? dataOs <= new Date(filtroDataFim + 'T23:59:59') : true;
-      return matchBusca && matchTipo && matchInicio && matchFim;
-  });
+  // Busca a configuração da empresa para o Relatório sair com Logo e Nome corretos
+  useEffect(() => {
+      const loadConfig = async () => {
+          if (equipamento?.tenant_id) {
+              const { data } = await supabase.from('empresas_inquilinas').select('*').eq('id', equipamento.tenant_id).maybeSingle();
+              if (data) setConfigEmpresa(data);
+          }
+      };
+      loadConfig();
+  }, [equipamento]);
+
+  const historicoFiltrado = useMemo(() => {
+      let dados = historico.filter(os => {
+          const searchL = filtroBusca.toLowerCase();
+          const matchBusca = os.id.toString().includes(searchL) || (os.defeito_relatado || '').toLowerCase().includes(searchL);
+          const matchTipo = filtroTipo ? os.tipo === filtroTipo : true;
+          
+          const dataOs = new Date(os.created_at);
+          const matchInicio = filtroDataInicio ? dataOs >= new Date(filtroDataInicio) : true;
+          const matchFim = filtroDataFim ? dataOs <= new Date(filtroDataFim + 'T23:59:59') : true;
+
+          return matchBusca && matchTipo && matchInicio && matchFim;
+      });
+
+      dados.sort((a, b) => {
+          let aValue = a[sortConfig.key] || '';
+          let bValue = b[sortConfig.key] || '';
+
+          if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+          if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+          return 0;
+      });
+
+      return dados;
+  }, [historico, filtroBusca, filtroTipo, filtroDataInicio, filtroDataFim, sortConfig]);
+
+  const requestSort = (key: string) => {
+      let direction: 'asc' | 'desc' = 'asc';
+      if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+      setSortConfig({ key, direction });
+  };
+
+  const getSortIcon = (key: string) => {
+      if (sortConfig.key !== key) return <ArrowUpDown size={12} className="opacity-30 ml-1" />;
+      return sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-blue-500 ml-1" /> : <ChevronDown size={12} className="text-blue-500 ml-1" />;
+  };
 
   const toggleSelectOs = (id: number) => setSelectedOsIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleSelectAll = () => {
       if (selectedOsIds.length === historicoFiltrado.length) setSelectedOsIds([]);
       else setSelectedOsIds(historicoFiltrado.map(os => os.id));
   };
-  
-  const handleBatchDownloadCSV = () => {
-      if (selectedOsIds.length === 0) return alert('Selecione pelo menos uma O.S. para exportar.');
-      const selectedOs = historicoFiltrado.filter(os => selectedOsIds.includes(os.id));
-      let csv = "ID da OS;Data de Abertura;Tipo;Status;Defeito Relatado;Custo Total (R$);Data de Fechamento\n";
-      selectedOs.forEach(os => {
-          const dataAb = new Date(os.created_at).toLocaleDateString('pt-BR');
-          const dataFech = os.data_fechamento ? new Date(os.data_fechamento).toLocaleDateString('pt-BR') : 'Pendente';
-          const defeito = (os.defeito_relatado || 'N/A').replace(/;/g, ',');
-          const custo = (os.valor_total || 0).toFixed(2).replace('.', ',');
-          csv += `${os.id};${dataAb};${os.tipo};${os.status};${defeito};${custo};${dataFech}\n`;
-      });
-      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.setAttribute("href", url); link.setAttribute("download", `Historico_O.S_${equipamento.tag}.csv`);
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+
+  // 🚀 MOTOR DE IMPRESSÃO (LIGADO NO NOVO MOTOR DE FICHAS DE O.S.)
+  const handlePrint = (osList: any[]) => {
+      if (!osList || osList.length === 0) return alert('Selecione pelo menos uma O.S. para imprimir.');
+      // Formata os dados para o RelatorioOSService entender (ele precisa do objeto equipamento e cliente dentro da OS)
+      const ordensFormatadas = osList.map(os => ({
+          ...os,
+          equipamento: equipamento,
+          cliente: equipamento.clienteData || equipamento.clientes
+      }));
+      // Chama o método atualizado que desenha a folha A4 real
+      RelatorioOSService.imprimirFichaOS(ordensFormatadas, configEmpresa);
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[200px]">
-               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1"><Filter size={12}/> Buscar</label>
-               <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                  <input type="text" placeholder="Nº O.S. ou Defeito..." className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500" value={filtroBusca} onChange={e => setFiltroBusca(e.target.value)}/>
-               </div>
-            </div>
-            <div className="w-36">
-               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Tipo de O.S.</label>
-               <select className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 bg-white" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                   <option value="">Todos</option><option value="Corretiva">Corretiva</option><option value="Preventiva">Preventiva</option><option value="Calibração">Calibração</option><option value="Segurança Elétrica">Seg. Elétrica</option>
-               </select>
-            </div>
-            <div className="w-32">
-               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Período Início</label>
-               <input type="date" className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 text-slate-600" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}/>
-            </div>
-            <div className="w-32">
-               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Período Fim</label>
-               <input type="date" className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 text-slate-600" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}/>
-            </div>
-        </div>
+    <div className="flex flex-col h-full bg-slate-50 p-6 space-y-6 animate-fadeIn">
+      
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-end">
+          <div className="flex-1 min-w-[200px]">
+             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1"><Filter size={12}/> Buscar</label>
+             <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                <input type="text" placeholder="Nº O.S. ou Defeito..." className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 transition-colors" value={filtroBusca} onChange={e => setFiltroBusca(e.target.value)}/>
+             </div>
+          </div>
+          <div className="w-40">
+             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Tipo de O.S.</label>
+             <select className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 bg-white transition-colors" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
+                 <option value="">Todos</option><option value="Corretiva">Corretiva</option><option value="Preventiva">Preventiva</option><option value="Calibração">Calibração</option><option value="Segurança Elétrica">Seg. Elétrica</option>
+             </select>
+          </div>
+          <div className="w-36">
+             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Período Início</label>
+             <input type="date" className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 text-slate-600 transition-colors" value={filtroDataInicio} onChange={e => setFiltroDataInicio(e.target.value)}/>
+          </div>
+          <div className="w-36">
+             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Período Fim</label>
+             <input type="date" className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 text-slate-600 transition-colors" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}/>
+          </div>
+      </div>
 
-        <div className="flex items-center justify-between px-2">
-            <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-blue-600 transition-colors">
-                {selectedOsIds.length === historicoFiltrado.length && historicoFiltrado.length > 0 ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18}/>}
-                Selecionar Todas ({historicoFiltrado.length})
-            </button>
-            {selectedOsIds.length > 0 && (
-                <button onClick={handleBatchDownloadCSV} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg text-xs font-bold border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-sm">
-                    <Download size={14}/> Exportar {selectedOsIds.length} Excel/CSV
-                </button>
-            )}
-        </div>
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+              <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">Histórico de Atividades</h3>
+              {selectedOsIds.length > 0 && (
+                  <button onClick={() => handlePrint(historicoFiltrado.filter(os => selectedOsIds.includes(os.id)))} className="text-xs font-bold flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-emerald-700 hover:shadow-lg transition-all animate-fadeIn">
+                      <Printer size={16}/> Relatório em Lote ({selectedOsIds.length})
+                  </button>
+              )}
+          </div>
+          <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Linhas por página:</span>
+              <select className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-700 outline-none bg-white cursor-pointer focus:border-blue-500" value={linhasPorPagina} onChange={e => setLinhasPorPagina(Number(e.target.value))}>
+                  <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
+              </select>
+          </div>
+      </div>
 
-        {loading ? (
-            <div className="text-center p-10 text-slate-400 text-sm">Carregando histórico...</div>
-        ) : historicoFiltrado.length === 0 ? (
-            <div className="text-center p-12 border-2 border-dashed border-slate-200 rounded-2xl bg-white">
-                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400"><History size={20}/></div>
-                <p className="text-sm font-bold text-slate-500">Nenhuma O.S. encontrada.</p>
-            </div>
-        ) : (
-            <div className="space-y-3">
-               {historicoFiltrado.map((os: any) => (
-                   <div key={os.id} className={`bg-white p-4 rounded-2xl border shadow-sm transition-colors flex flex-col md:flex-row gap-4 md:items-center cursor-pointer ${selectedOsIds.includes(os.id) ? 'border-blue-400 bg-blue-50/30' : 'border-slate-200 hover:border-blue-300'}`} onClick={() => toggleSelectOs(os.id)}>
-                       <div className="shrink-0 pt-3 md:pt-0 pl-2">
-                           {selectedOsIds.includes(os.id) ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20} className="text-slate-300"/>}
-                       </div>
-                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${os.status === 'Concluída' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
-                           {os.status === 'Concluída' ? <CheckCircle size={20}/> : <Wrench size={20}/>}
-                       </div>
-                       <div className="flex-1">
-                           <div className="flex flex-wrap items-center gap-3 mb-1.5">
-                              <h4 className="text-base font-black text-slate-800">O.S. #{os.id}</h4>
-                              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md bg-slate-100 text-slate-600">{os.tipo}</span>
-                              <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md border ${os.status === 'Concluída' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>{os.status}</span>
-                           </div>
-                           <p className="text-sm text-slate-500 line-clamp-1">{os.defeito_relatado || 'Sem descrição cadastrada'}</p>
-                       </div>
-                       <div className="flex flex-row md:flex-col gap-4 md:gap-1 text-xs font-medium text-slate-500 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-4 min-w-[140px]">
-                           <div className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-400"/> Aberta: <span className="font-bold text-slate-700">{new Date(os.created_at).toLocaleDateString('pt-BR')}</span></div>
-                           {os.data_fechamento ? (
-                              <div className="flex items-center gap-1.5"><CheckCircle size={14} className="text-emerald-400"/> Fechada: <span className="font-bold text-slate-700">{new Date(os.data_fechamento).toLocaleDateString('pt-BR')}</span></div>
-                           ) : (
-                              <div className="flex items-center gap-1.5"><Activity size={14} className="text-amber-400"/> Em andamento</div>
-                           )}
-                       </div>
-                       <div className="shrink-0 mt-2 md:mt-0 flex gap-2">
-                           <button onClick={(e) => { e.stopPropagation(); window.open(`/ordens?id=${os.id}`, '_blank'); }} className="px-4 py-2.5 bg-slate-50 hover:bg-blue-50 text-blue-600 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-200 hover:border-blue-200">
-                              Ver <ExternalLink size={14}/>
-                           </button>
-                       </div>
-                   </div>
-               ))}
-            </div>
-        )}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1">
+        <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left whitespace-nowrap min-w-[1400px]">
+                <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-500 tracking-widest">
+                        <th className="p-4 w-12 text-center">
+                            <button onClick={toggleSelectAll} className="text-slate-400 hover:text-blue-600 transition-colors">
+                                {selectedOsIds.length === historicoFiltrado.length && historicoFiltrado.length > 0 ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18}/>}
+                            </button>
+                        </th>
+                        <th className="p-4 text-center">Ações</th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => requestSort('id')}><div className="flex items-center">Número {getSortIcon('id')}</div></th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => requestSort('status')}><div className="flex items-center">Estado {getSortIcon('status')}</div></th>
+                        <th className="p-4">Solicitante</th>
+                        <th className="p-4">Responsável</th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => requestSort('tipo')}><div className="flex items-center">Tipo de Serviço {getSortIcon('tipo')}</div></th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => requestSort('created_at')}><div className="flex items-center">Data de Criação {getSortIcon('created_at')}</div></th>
+                        <th className="p-4 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => requestSort('data_fechamento')}><div className="flex items-center">Data Fechamento {getSortIcon('data_fechamento')}</div></th>
+                        <th className="p-4 text-amber-600">Prioridade</th>
+                        <th className="p-4 text-slate-400">Problema Relatado</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                    {loading ? (
+                        <tr><td colSpan={11} className="p-12 text-center font-bold text-slate-400">Sincronizando histórico...</td></tr>
+                    ) : historicoFiltrado.length === 0 ? (
+                        <tr><td colSpan={11} className="p-12 text-center font-bold text-slate-400">Nenhum registro de O.S. encontrado para este equipamento.</td></tr>
+                    ) : (
+                        historicoFiltrado.slice(0, linhasPorPagina).map((os: any) => (
+                            <tr key={os.id} className={`hover:bg-blue-50/50 transition-colors group ${selectedOsIds.includes(os.id) ? 'bg-blue-50/30' : ''}`}>
+                                <td className="p-4 text-center">
+                                    <button onClick={() => toggleSelectOs(os.id)} className="text-slate-400 hover:text-blue-600 transition-colors">
+                                        {selectedOsIds.includes(os.id) ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18}/>}
+                                    </button>
+                                </td>
+                                <td className="p-4">
+                                    <div className="flex items-center justify-center gap-3 text-teal-600">
+                                        <button title="Visualizar O.S." onClick={() => window.open(`/ordens?id=${os.id}`, '_blank')} className="hover:text-blue-600 transition-transform hover:scale-110"><Eye size={18}/></button>
+                                        <button title="Imprimir PDF" onClick={() => handlePrint([os])} className="hover:text-blue-600 transition-transform hover:scale-110"><Printer size={18}/></button>
+                                        <button title="Editar O.S." onClick={() => window.open(`/ordens?id=${os.id}&edit=true`, '_blank')} className="hover:text-blue-600 transition-transform hover:scale-110"><Edit3 size={18}/></button>
+                                    </div>
+                                </td>
+                                <td className="p-4 font-black text-slate-700">{os.id}</td>
+                                <td className="p-4">
+                                   <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${os.status === 'Concluída' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>
+                                       {os.status}
+                                   </span>
+                                </td>
+                                <td className="p-4 text-xs font-bold text-slate-600 max-w-[200px] truncate" title={equipamento.clienteData?.nome_fantasia || equipamento.clientes?.nome_fantasia || 'N/A'}>
+                                    {equipamento.clienteData?.nome_fantasia || equipamento.clientes?.nome_fantasia || 'N/A'}
+                                </td>
+                                <td className="p-4 text-xs font-medium text-slate-500">Técnico ID: {os.tecnico_id || 'Não atribuído'}</td>
+                                <td className="p-4 text-xs font-bold text-slate-700">{os.tipo}</td>
+                                <td className="p-4 text-xs font-medium text-slate-500">{new Date(os.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                                <td className="p-4 text-xs font-medium text-slate-500">{os.data_fechamento ? new Date(os.data_fechamento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
+                                <td className="p-4 text-xs font-black text-slate-500 uppercase">Normal</td>
+                                <td className="p-4 text-xs font-medium text-slate-500 max-w-[250px] truncate" title={os.defeito_relatado}>{os.defeito_relatado || 'Manutenção Preventiva Padrão'}</td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </div>
+      </div>
     </div>
   );
 }

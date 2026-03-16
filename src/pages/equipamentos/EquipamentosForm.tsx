@@ -4,42 +4,27 @@ import { supabase } from '../../supabaseClient';
 
 interface Props { isOpen: boolean; onClose: () => void; onSuccess: () => void; editId?: number | null; equipmentToEdit?: any; tenantId?: number; }
 
-export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipmentToEdit, tenantId = 1 }: Props) {
+export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipmentToEdit, tenantId }: Props) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [clientes, setClientes] = useState<any[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
 
-  // Estados do Dicionário Limpo
   const [dictTecnologias, setDictTecnologias] = useState<any[]>([]);
   const [dictFabricantes, setDictFabricantes] = useState<any[]>([]);
   const [dictModelos, setDictModelos] = useState<any[]>([]);
 
-  // 🚀 ESTADO DO FORMULÁRIO (INICIA VAZIO E É HIDRATADO DEPOIS)
   const [formData, setFormData] = useState({
-        modelo_dict_id: '',
-        cliente_id: '',
-        nome: '',
-        fabricante: '',
-        modelo: '',
-        registro_anvisa: '',
-        tag: '',
-        n_serie: '',
-        patrimonio: '',
-        status: 'Operacional',
-        data_instalacao: '',
-        classe_risco: 'I - Baixo Risco',
-        data_aquisicao: '',
-        vencimento_garantia: '',
-        valor_bem: 0,
-        manual_url: ''
+        modelo_dict_id: '', cliente_id: '', nome: '', fabricante: '', modelo: '', registro_anvisa: '',
+        tag: '', n_serie: '', patrimonio: '', status: 'Operacional', data_instalacao: '',
+        classe_risco: 'I - Baixo Risco', data_aquisicao: '', vencimento_garantia: '', valor_bem: 0, manual_url: ''
   });
 
-  // 🚀 BUSCA BLINDADA DE DEPENDÊNCIAS
   useEffect(() => {
     const loadDependencies = async () => {
       try {
-          const { data: cli } = await supabase.from('clientes').select('id, nome_fantasia');
+          // 🚀 BUSCANDO APENAS OS CLIENTES DESTE INQUILINO
+          const { data: cli } = await supabase.from('clientes').select('id, nome_fantasia').eq('tenant_id', tenantId);
           if (cli) setClientes(cli);
       } catch (e) { console.error("Erro Clientes:", e); }
 
@@ -59,38 +44,27 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
       } catch (e) { console.error("Erro Modelos:", e); }
     };
     
-    loadDependencies();
-  }, []);
+    if (tenantId) loadDependencies();
+  }, [tenantId]);
 
-  // 🚀 A CURA DOS FANTASMAS: O MOTOR DE HIDRATAÇÃO DO MODO "EDIÇÃO"
   useEffect(() => {
       const fetchEquipmentToEdit = async () => {
-          // Se recebemos o objeto já pronto da tabela principal, usamos ele.
           if (equipmentToEdit) {
               hydrateForm(equipmentToEdit);
               return;
           }
-
-          // Se recebemos apenas o ID, nós buscamos no banco (Forma Segura)
           if (editId && isOpen) {
               setLoading(true);
               try {
-                  const { data, error } = await supabase
-                      .from('equipamentos')
-                      .select('*') // 🚀 Busca limpa, sem pedir tabelas relacionadas para não dar o erro do "Could not embed"
-                      .eq('id', editId)
-                      .single();
-                  
+                  const { data, error } = await supabase.from('equipamentos').select('*').eq('id', editId).single();
                   if (error) throw error;
                   if (data) hydrateForm(data);
-
               } catch (error) {
                   console.error('Erro ao carregar dados para edição:', error);
               } finally {
                   setLoading(false);
               }
           } else if (!editId && !equipmentToEdit) {
-              // É um Novo Ativo, reseta o form
               setFormData({
                   modelo_dict_id: '', cliente_id: '', nome: '', fabricante: '', modelo: '', registro_anvisa: '',
                   tag: '', n_serie: '', patrimonio: '', status: 'Operacional', data_instalacao: '',
@@ -102,7 +76,6 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
       fetchEquipmentToEdit();
   }, [editId, equipmentToEdit, isOpen]);
 
-  // Função auxiliar para preencher o state sem repetição de código
   const hydrateForm = (base: any) => {
       setFormData({
           modelo_dict_id: base.modelo_dict_id ? String(base.modelo_dict_id) : '',
@@ -124,21 +97,14 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
       });
   };
 
-
-  const handleChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleChange = (field: string, value: string | number) => setFormData(prev => ({ ...prev, [field]: value }));
 
   const handleSelectModeloDict = (modeloSelecionado: any, tecNome: string, fabNome: string) => {
       if (!modeloSelecionado) {
           setFormData(prev => ({ ...prev, modelo_dict_id: '', nome: '', fabricante: '', modelo: '' }));
       } else {
           setFormData(prev => ({
-              ...prev, 
-              modelo_dict_id: String(modeloSelecionado.id),
-              nome: tecNome, 
-              fabricante: fabNome, 
-              modelo: modeloSelecionado.nome
+              ...prev, modelo_dict_id: String(modeloSelecionado.id), nome: tecNome, fabricante: fabNome, modelo: modeloSelecionado.nome
           }));
       }
   };
@@ -162,12 +128,10 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
     if (formData.n_serie && formData.n_serie.length > 3) conditions.push(`n_serie.eq.${formData.n_serie}`);
     if (conditions.length === 0) return;
 
-    const { data } = await supabase.from('equipamentos').select('id, tag, n_serie').or(conditions.join(','));
+    const { data } = await supabase.from('equipamentos').select('id, tag, n_serie').eq('tenant_id', tenantId).or(conditions.join(','));
     if (data && data.length > 0) {
-        // Usa o editId ou o equipmentToEdit.id para comparar
         const currentId = editId || equipmentToEdit?.id;
         const conflitos = data.filter(item => String(item.id) !== String(currentId));
-        
         if (conflitos.length > 0) {
             const erro = conflitos[0];
             if (erro.tag === formData.tag) throw new Error(`A TAG "${formData.tag}" já existe noutro equipamento.`);
@@ -198,16 +162,14 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
       const modDictId = Number(formData.modelo_dict_id);
 
       const payload: any = {
-        tenant_id: tenantId, 
+        tenant_id: tenantId, // 🚀 SALVANDO NO COFRE DO CLIENTE ATUAL
         tag: formData.tag, 
         n_serie: formData.n_serie, 
         patrimonio: formData.patrimonio, 
         status: formData.status,
         cliente_id: cliId > 0 ? cliId : null, 
         data_instalacao: formData.data_instalacao || null, 
-        
         modelo_dict_id: modDictId > 0 ? modDictId : null,
-        
         nome: formData.nome, 
         fabricante: formData.fabricante, 
         modelo: formData.modelo, 
@@ -227,7 +189,7 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
         await supabase.from('equipamentos').insert([payload]);
       }
       setIsConfirming(false);
-      onSuccess(); // Isso fecha o modal e chama o fetchData da listagem principal
+      onSuccess(); 
     } catch (error: any) { alert('Erro ao salvar: ' + error.message); setIsConfirming(false); } finally { setLoading(false); }
   };
 
@@ -263,8 +225,6 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-slate-50/30">
-          
-          {/* Se estiver carregando, mostra tela de Loading (previne renderizar vazio) */}
           {loading && (editId || equipmentToEdit) ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400">
                   <Loader2 size={40} className="animate-spin mb-4 text-blue-500"/>
@@ -272,7 +232,6 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
               </div>
           ) : (
               <div className="space-y-8 max-w-5xl mx-auto">
-                 
                  <div className={`p-6 rounded-3xl border shadow-sm transition-all duration-300 relative group ${isLocked ? 'bg-slate-50 border-slate-200' : 'bg-white border-blue-200 ring-4 ring-blue-50'}`}>
                     <div className="flex justify-between items-start mb-6">
                         <div>
@@ -379,7 +338,6 @@ export function EquipamentosForm({ isOpen, onClose, onSuccess, editId, equipment
   );
 }
 
-// MOTOR DE CASCATA
 function CascadingDictSelect({ dictTecnologias, dictFabricantes, dictModelos, selectedModeloId, onSelectModelo, isLocked }: any) {
   const [tecId, setTecId] = useState('');
   const [fabId, setFabId] = useState('');

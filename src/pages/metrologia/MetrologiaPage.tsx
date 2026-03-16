@@ -5,7 +5,7 @@ import { supabase } from '../../supabaseClient';
 import { MetrologiaDashboard } from './MetrologiaDashboard';
 import { PadroesList } from './padroes/PadroesList';
 import { ProcedimentosList } from './procedimentos/ProcedimentosList';
-import { TseNormasList } from './TseNormasList'; // INJETAMOS AQUI
+import { TseNormasList } from './TseNormasList'; 
 
 const getSubdomain = () => {
   const hostname = window.location.hostname;
@@ -25,10 +25,6 @@ export function MetrologiaPage() {
       try {
         const slug = getSubdomain();
         let { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
-        if (!data) {
-            const { data: fallbackData } = await supabase.from('empresas_inquilinas').select('id').order('id', { ascending: true }).limit(1).maybeSingle();
-            data = fallbackData;
-        }
         if (data) setTenantId(data.id);
         else setTenantId(-1);
       } catch (err) {
@@ -61,9 +57,10 @@ export function MetrologiaPage() {
 
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         <div className="max-w-[1600px] mx-auto pb-24">
-            {activeTab === 'dashboard' && <MetrologiaDashboard onChangeTab={setActiveTab} />}
-            {activeTab === 'padroes' && <PadroesList />}
-            {activeTab === 'procedimentos' && <ProcedimentosList />}
+            {/* 🚀 O ID DO INQUILINO SENDO ENVIADO PARA OS FILHOS PARA BLINDAR A TELA */}
+            {activeTab === 'dashboard' && <MetrologiaDashboard onChangeTab={setActiveTab} tenantId={tenantId} />}
+            {activeTab === 'padroes' && <PadroesList tenantId={tenantId} />}
+            {activeTab === 'procedimentos' && <ProcedimentosList tenantId={tenantId} />}
             {activeTab === 'normas_tse' && <TseNormasList tenantId={tenantId} />}
         </div>
       </div>

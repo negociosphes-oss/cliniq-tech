@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, FileText, Calendar, CheckCircle, UploadCloud, Edit, Scale } from 'lucide-react';
+import { Search, Plus, FileText, Calendar, CheckCircle, UploadCloud, Edit, Scale, Loader2 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import { PadroesFormModal } from './PadroesFormModal';
-import { UploadCertificadoModal } from '../UploadCertificadoModal'; // <--- CORREÇÃO AQUI (Apenas um ponto duplo ../)
+import { UploadCertificadoModal } from '../UploadCertificadoModal'; 
 import { format, parseISO, isAfter, isValid } from 'date-fns';
 
-export function PadroesList() {
+interface Props {
+  tenantId: number; // 🚀 RECEBENDO A CREDENCIAL DO CLIENTE
+}
+
+export function PadroesList({ tenantId }: Props) {
   const [padroes, setPadroes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
@@ -14,11 +18,14 @@ export function PadroesList() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
-  useEffect(() => { carregarPadroes(); }, []);
+  useEffect(() => { 
+      if (tenantId) carregarPadroes(); 
+  }, [tenantId]);
 
   const carregarPadroes = async () => {
     setLoading(true);
-    const { data } = await supabase.from('padroes').select('*').order('nome');
+    // 🚀 FILTRO DE ISOLAMENTO APLICADO
+    const { data } = await supabase.from('padroes').select('*').eq('tenant_id', tenantId).order('nome');
     if (data) setPadroes(data);
     setLoading(false);
   };
@@ -39,7 +46,7 @@ export function PadroesList() {
 
   const itensFiltrados = padroes.filter(p => 
     p.nome.toLowerCase().includes(busca.toLowerCase()) || 
-    p.n_serie.toLowerCase().includes(busca.toLowerCase())
+    (p.n_serie && p.n_serie.toLowerCase().includes(busca.toLowerCase()))
   );
 
   return (
@@ -66,7 +73,9 @@ export function PadroesList() {
 
       {/* GRID DE CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {itensFiltrados.map(item => {
+        {loading ? (
+            <div className="col-span-full py-12 flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>
+        ) : itensFiltrados.map(item => {
             const dataVenc = item.data_vencimento ? parseISO(item.data_vencimento) : null;
             const vencido = dataVenc && isValid(dataVenc) ? !isAfter(dataVenc, new Date()) : false;
             
@@ -134,7 +143,7 @@ export function PadroesList() {
           </div>
       )}
 
-      {/* MODAIS (Protegidos por KEY) */}
+      {/* MODAIS */}
       {isFormOpen && (
         <PadroesFormModal 
             key={selectedItem ? selectedItem.id : 'new-padrao'}
@@ -142,6 +151,7 @@ export function PadroesList() {
             onClose={() => setIsFormOpen(false)} 
             onSuccess={() => { carregarPadroes(); setIsFormOpen(false); }} 
             padraoId={selectedItem?.id} 
+            tenantId={tenantId} // 🚀 PASSANDO O ID PARA SALVAR NA CONTA CERTA
         />
       )}
       

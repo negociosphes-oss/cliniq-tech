@@ -5,9 +5,10 @@ import { differenceInDays, parseISO, isValid } from 'date-fns';
 
 interface Props {
   onChangeTab: (tab: 'dashboard' | 'padroes' | 'procedimentos') => void;
+  tenantId: number; // 🚀 PROP INJETADA PARA O TYPESCRIPT PARAR DE RECLAMAR
 }
 
-export function MetrologiaDashboard({ onChangeTab }: Props) {
+export function MetrologiaDashboard({ onChangeTab, tenantId }: Props) {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalPadroes: 0,
@@ -17,24 +18,26 @@ export function MetrologiaDashboard({ onChangeTab }: Props) {
   });
 
   useEffect(() => {
-    carregarIndicadores();
-  }, []);
+    if(tenantId) carregarIndicadores();
+  }, [tenantId]);
 
   const carregarIndicadores = async () => {
     try {
       setLoading(true);
       
-      // 1. Busca Padrões (Contagem Real de Ativos)
+      // 1. Busca Padrões (BLINDADO COM TENANT_ID)
       const { data: padroes, error } = await supabase
         .from('padroes')
         .select('*')
-        .neq('status', 'Arquivado') // Ignora apenas os arquivados explicitamente
+        .eq('tenant_id', tenantId)
+        .neq('status', 'Arquivado') 
         .neq('status', 'Excluido'); 
 
-      // 2. Busca Procedimentos
+      // 2. Busca Procedimentos (BLINDADO COM TENANT_ID)
       const { count: procsCount } = await supabase
         .from('metrologia_procedimentos')
         .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
         .eq('status', 'ATIVO');
 
       let vencidos = 0;

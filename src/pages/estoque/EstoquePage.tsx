@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Package, AlertTriangle, ArrowRightLeft, Edit, FileSpreadsheet, Briefcase } from 'lucide-react';
+import { Search, Plus, Package, AlertTriangle, ArrowRightLeft, Edit, FileSpreadsheet, Briefcase, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { ItemFormModal } from './ItemFormModal';
 import { MovimentacaoModal } from './MovimentacaoModal';
 import { ImportCsvModal } from './ImportCsvModal'; 
+
+// 🚀 FAREJADOR DE SUBDOMÍNIO (PARA DESCOBRIR O TENANT)
+const getSubdomain = () => {
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+    if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
+        return parts[0];
+    }
+    return 'admin'; 
+};
 
 export function EstoquePage() {
   const [itens, setItens] = useState<any[]>([]);
@@ -15,16 +25,35 @@ export function EstoquePage() {
   const [isImportModalOpen, setImportModalOpen] = useState(false); 
   const [selectedItem, setSelectedItem] = useState<any>(null);
   
-  const tenantId = 1;
+  const [tenantId, setTenantId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const slug = getSubdomain();
+        let { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
+        if (data) setTenantId(data.id);
+        else setTenantId(-1);
+      } catch (err) {
+        setTenantId(-1);
+      }
+    };
+    initTenant();
+  }, []);
+
+  useEffect(() => { 
+      if (tenantId && tenantId > 0) {
+          fetchEstoque(); 
+      }
+  }, [tenantId]);
 
   const fetchEstoque = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('estoque_itens').select('*').order('nome');
+    // 🚀 FILTRO MESTRE DE ISOLAMENTO ADICIONADO AQUI
+    const { data, error } = await supabase.from('estoque_itens').select('*').eq('tenant_id', tenantId).order('nome');
     if (!error && data) setItens(data);
     setLoading(false);
   };
-
-  useEffect(() => { fetchEstoque(); }, []);
 
   const itensFiltrados = itens.filter(i => 
     i.nome.toLowerCase().includes(busca.toLowerCase()) || 
@@ -34,6 +63,8 @@ export function EstoquePage() {
 
   const openEdit = (item: any) => { setSelectedItem(item); setItemModalOpen(true); };
   const openMov = (item: any) => { setSelectedItem(item); setMovModalOpen(true); };
+
+  if (!tenantId) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>;
 
   return (
     <div className="max-w-[1600px] mx-auto p-4 md:p-8 animate-fadeIn pb-24">
@@ -80,9 +111,9 @@ export function EstoquePage() {
              </thead>
              <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                    <tr><td colSpan={5} className="py-12 text-center text-slate-400">Carregando catálogo...</td></tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-slate-400"><Loader2 className="animate-spin mx-auto mb-2" size={24}/> Carregando catálogo...</td></tr>
                 ) : itensFiltrados.length === 0 ? (
-                    <tr><td colSpan={5} className="py-12 text-center text-slate-400">Nenhum item ou serviço cadastrado.</td></tr>
+                    <tr><td colSpan={5} className="py-12 text-center text-slate-400">Nenhum item ou serviço cadastrado neste ambiente.</td></tr>
                 ) : (
                    itensFiltrados.map(item => {
                       const isServico = item.categoria === 'Serviço';
@@ -141,9 +172,9 @@ export function EstoquePage() {
           </table>
        </div>
 
-       {isItemModalOpen && <ItemFormModal isOpen={isItemModalOpen} onClose={() => setItemModalOpen(false)} onSuccess={fetchEstoque} itemToEdit={selectedItem} tenantId={tenantId} />}
-       {isMovModalOpen && <MovimentacaoModal isOpen={isMovModalOpen} onClose={() => setMovModalOpen(false)} onSuccess={fetchEstoque} item={selectedItem} tenantId={tenantId} />}
-       {isImportModalOpen && <ImportCsvModal isOpen={isImportModalOpen} onClose={() => setImportModalOpen(false)} onSuccess={fetchEstoque} tenantId={tenantId} />}
+       {isItemModalOpen && <ItemFormModal isOpen={isItemModalOpen} onClose={() => setItemModalOpen(false)} onSuccess={fetchEstoque} itemToEdit={selectedItem} tenantId={tenantId as number} />}
+       {isMovModalOpen && <MovimentacaoModal isOpen={isMovModalOpen} onClose={() => setMovModalOpen(false)} onSuccess={fetchEstoque} item={selectedItem} tenantId={tenantId as number} />}
+       {isImportModalOpen && <ImportCsvModal isOpen={isImportModalOpen} onClose={() => setImportModalOpen(false)} onSuccess={fetchEstoque} tenantId={tenantId as number} />}
     </div>
   );
 }

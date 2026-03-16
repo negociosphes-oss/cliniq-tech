@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom' 
-import { Menu, X, Loader2, AlertTriangle, ShieldCheck, Activity, Cpu, Lock, Mail, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { Menu, X, Loader2, AlertTriangle, ShieldCheck, Activity, Lock, Mail, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { supabase } from './supabaseClient'
 
 // --- SERVIÇOS ---
@@ -19,7 +19,7 @@ import { EquipamentosPage } from './pages/equipamentos/EquipamentosPage'
 import { OrdemServicoPage } from './pages/ordem-servico/OrdemServicoPage'
 import { AberturaChamadoPage } from './pages/ordem-servico/AberturaChamadoPage'
 import { CronogramaPage } from './pages/cronograma/CronogramaPage' 
-import { TecnologiasPage } from './pages/tecnologia/TecnologiasPage'
+import { DicionarioPage } from './pages/tecnologia/DicionarioPage' 
 import { ClientesPage } from './pages/clientes/ClientesPage'
 import { EquipePage } from './pages/equipe/EquipePage'
 import { AdminPage } from './pages/admin/AdminPage'
@@ -29,11 +29,9 @@ import { ChecklistPage } from './pages/checklists/ChecklistPage'
 import { MetrologiaPage } from './pages/metrologia/MetrologiaPage' 
 import { AdminGeralPage } from './pages/admin-geral/AdminGeralPage'
 import { EstoquePage } from './pages/estoque/EstoquePage'
-
-// 🚀 A LANDING PAGE VOLTOU! (SEU MARKETING)
 import { LandingPage } from './pages/landing/LandingPage'
 
-import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, Manual, OrdemServico, LogAuditoria } from './types'
+import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, OrdemServico } from './types' 
 
 // 🚀 FAREJADOR DE SUBDOMÍNIO
 const getSubdomain = () => {
@@ -55,7 +53,7 @@ function Toast({ message, type, onClose }: { message: string, type: 'success' | 
   )
 }
 
-// 🚀 TELA DE LOGIN PREMIUM (GLASSMORPHISM)
+// 🚀 TELA DE LOGIN OTIMIZADA PARA MOBILE (100dvh e overflow-y-auto)
 function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => void, tenant: any }) {
   const [email, setEmail] = useState(''); 
   const [senha, setSenha] = useState(''); 
@@ -87,9 +85,9 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
   const primaryColor = tenant?.cor_primaria || '#0f172a';
 
   return (
-    <div className="min-h-screen w-full flex bg-slate-50 font-sans selection:bg-blue-500 selection:text-white">
+    <div className="min-h-[100dvh] w-full flex bg-slate-50 font-sans selection:bg-blue-500 selection:text-white">
       
-      {/* 🌌 LADO ESQUERDO: BRANDING (Oculto no Celular) */}
+      {/* LADO ESQUERDO: BANNER (Escondido no Mobile) */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16 bg-slate-900" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #020617 100%)` }}>
          <div className="absolute top-[-20%] left-[-10%] w-[50rem] h-[50rem] bg-white/5 rounded-full blur-[120px] animate-pulse pointer-events-none"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
@@ -122,38 +120,38 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
          </div>
       </div>
 
-      {/* 🔐 LADO DIREITO: ÁREA DE LOGIN */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative bg-[#f8fafc]">
-         <div className="absolute top-0 left-0 w-full h-64 opacity-20 lg:hidden" style={{ background: `linear-gradient(180deg, ${primaryColor} 0%, transparent 100%)` }}></div>
+      {/* LADO DIREITO: LOGIN (100% da tela no Mobile, com rolagem inteligente) */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative bg-[#f8fafc] overflow-y-auto h-[100dvh] custom-scrollbar">
+         {/* Gradiente de fundo no topo (mobile) com pointer-events-none para não bloquear cliques */}
+         <div className="absolute top-0 left-0 w-full h-64 opacity-20 lg:hidden pointer-events-none" style={{ background: `linear-gradient(180deg, ${primaryColor} 0%, transparent 100%)` }}></div>
 
-         <div className="w-full max-w-[420px] animate-slideUp relative z-10">
+         <div className="w-full max-w-[420px] animate-slideUp relative z-10 my-auto py-8">
              
-             <div className="text-center mb-10">
+             <div className="text-center mb-8">
                  <div className="flex justify-center mb-6">
-                     {/* 🚀 LOGO SINCRONIZADA COM O PAINEL DE CONFIGURAÇÕES */}
                      {tenant?.logo_url ? (
-                         <div className="h-28 w-auto max-w-[220px] flex items-center justify-center bg-white p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 transition-transform hover:scale-105">
+                         <div className="h-24 sm:h-28 w-auto max-w-[220px] flex items-center justify-center bg-white p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 transition-transform hover:scale-105">
                             <img src={tenant.logo_url} alt={`Logo ${tenant.nome_fantasia}`} className="h-full w-full object-contain" />
                          </div>
                      ) : (
-                         <div className="h-24 w-24 rounded-[2rem] flex items-center justify-center shadow-xl text-white font-black text-4xl shadow-blue-900/20" style={{ backgroundColor: primaryColor }}>
+                         <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-[2rem] flex items-center justify-center shadow-xl text-white font-black text-3xl sm:text-4xl shadow-blue-900/20" style={{ backgroundColor: primaryColor }}>
                              {tenant?.nome_fantasia ? tenant.nome_fantasia.charAt(0).toUpperCase() : 'A'}
                          </div>
                      )}
                  </div>
-                 <h2 className="text-3xl font-black text-slate-800 tracking-tight mb-2">{horaLocal}!</h2>
+                 <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight mb-2">{horaLocal}!</h2>
                  <p className="text-slate-500 font-medium text-sm">Acesso restrito ao ambiente da <br className="hidden sm:block"/><strong className="text-slate-700">{tenant?.nome_fantasia || 'unidade'}</strong>.</p>
              </div>
 
-             <div className="bg-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100">
-                 <form onSubmit={handleLogin} className="flex flex-col gap-6">
+             <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100">
+                 <form onSubmit={handleLogin} className="flex flex-col gap-5 sm:gap-6">
                     
                     <div className="space-y-2 group">
                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 group-focus-within:text-blue-600 transition-colors">E-mail Corporativo</label>
                         <div className="relative">
                             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18}/>
                             <input 
-                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:font-medium placeholder:text-slate-400" 
+                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:font-medium placeholder:text-slate-400 text-sm sm:text-base" 
                               type="email" value={email} onChange={e => setEmail(e.target.value)} 
                               placeholder="nome@hospital.com.br" required 
                             />
@@ -168,14 +166,14 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
                         <div className="relative">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" size={18}/>
                             <input 
-                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:text-slate-400 tracking-widest" 
+                              className="w-full h-14 pl-12 pr-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-slate-800 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all font-bold placeholder:text-slate-400 tracking-widest text-sm sm:text-base" 
                               type="password" value={senha} onChange={e => setSenha(e.target.value)} 
                               placeholder="••••••••" required 
                             />
                         </div>
                     </div>
 
-                    <button disabled={loading} className="w-full h-14 mt-4 text-white font-black rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 flex items-center justify-center gap-3 relative overflow-hidden group" style={{ backgroundColor: primaryColor }}>
+                    <button disabled={loading} className="w-full h-14 mt-2 sm:mt-4 text-white font-black rounded-2xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 disabled:opacity-70 flex items-center justify-center gap-3 relative overflow-hidden group" style={{ backgroundColor: primaryColor }}>
                         {loading ? (
                             <Loader2 className="animate-spin" size={22} />
                         ) : (
@@ -188,7 +186,7 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
                  </form>
              </div>
              
-             <div className="mt-10 text-center">
+             <div className="mt-8 sm:mt-10 text-center pb-8 sm:pb-0">
                 <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center justify-center gap-2">
                     <ShieldCheck size={14}/> Ambiente Seguro e Criptografado
                 </p>
@@ -211,7 +209,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   const [toast, setToast] = useState<{msg: string, type: 'success'|'error'|'info'} | null>(null);
   const [themeColor, setThemeColor] = useState(tenant?.cor_primaria || '#1e3a8a'); 
 
-  const [config, setConfig] = useState<Config>({ 
+  const [config] = useState<Config>({ 
       id: tenant?.id, 
       nome_empresa: tenant?.nome_fantasia, 
       logo_url: tenant?.logo_url, 
@@ -220,14 +218,9 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   });
 
   const [clientes, setClientes] = useState<Cliente[]>([]); 
-  const [tecnologias, setTecnologias] = useState<Tecnologia[]>([]);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]); 
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]); 
-  const [manuais, setManuais] = useState<Manual[]>([]); 
-  const [logs, setLogs] = useState<LogAuditoria[]>([]); 
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]); 
-
   const [targetOsId, setTargetOsId] = useState<number | null>(null);
 
   const showToast = useCallback((msg: string, type: 'success'|'error'|'info' = 'success') => { 
@@ -253,23 +246,17 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   const fetchAll = useCallback(async () => {
     if (!tenant) return;
     try {
-        const [resCli, resTec, resTcn, resMan, resLogs, resUsr] = await Promise.all([
+        const [resCli, resTec, resTcn, resUsr] = await Promise.all([
             supabase.from('clientes').select('*').eq('tenant_id', tenant.id),
-            supabase.from('tecnologias').select('*'),
+            supabase.from('tecnologias').select('*').eq('tenant_id', tenant.id), 
             supabase.from('equipe_tecnica').select('*').eq('tenant_id', tenant.id),
-            supabase.from('manuais').select('*'),
-            supabase.from('logs_auditoria').select('*').order('data', {ascending: false}).limit(50),
             supabase.from('usuarios').select('*').eq('tenant_id', tenant.id)
         ]);
 
         setClientes(resCli.data || []);
-        setTecnologias(resTec.data || []);
-        setManuais(resMan.data || []);
-        setLogs(resLogs.data || []);
         
         const usuariosData = resUsr.data || [];
-        setUsuarios(usuariosData);
-
+        
         let tecnicosData = resTcn.data || [];
         if (tecnicosData.length === 0 && usuariosData.length > 0) {
             tecnicosData = usuariosData.map((u: any) => ({ id: u.id, nome: u.nome, especialidade: u.cargo }));
@@ -313,15 +300,8 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   }, [showToast, tenant?.id]);
 
   useEffect(() => { fetchAll() }, [fetchAll]);
-
-  const registrarLog = async (acao: string, cliente: string = 'N/A') => { 
-      try { await supabase.from('logs_auditoria').insert([{ acao, usuario_nome: user.nome || 'Sistema', cliente_nome: cliente }]); fetchAll(); } 
-      catch (e) { console.error("Log error", e) }
-  }
   
   const handleNavigate = (path: string) => navigate(`/${path}`);
-  const handleAbrirChamadoDoInventario = (eq: Equipamento) => { navigate('/novo-chamado', { state: { preSelectedEquipamento: eq } }); };
-  const handleViewOS = (osId: number) => { setTargetOsId(osId); navigate('/ordens'); };
 
   if (loadingData) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white flex-col gap-6"><Loader2 className="animate-spin text-blue-500" size={48}/><p className="font-bold tracking-widest uppercase text-xs">Carregando Ambiente Empresarial...</p></div>;
 
@@ -333,16 +313,14 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
         config={config} 
         user={user}
         onLogout={onLogout} 
-        darkMode={darkMode} setDarkMode={setDarkMode} 
-        isCollapsed={isSidebarCollapsed} toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
         themeColor={themeColor} setThemeColor={setThemeColor}
+        isCollapsed={isSidebarCollapsed} toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
         isMobileOpen={isMobileMenuOpen} 
         setIsMobileOpen={setIsMobileMenuOpen}
       />
       
       <div className={`flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full ${isSidebarCollapsed ? 'md:ml-24' : 'md:ml-72'} ml-0`}>
         
-        {/* HEADER MOBILE */}
         <header className="fixed top-0 left-0 w-full h-16 bg-theme-card shadow-sm px-4 flex items-center justify-between md:hidden border-b border-theme z-40">
             <div className="flex items-center gap-3">
                {config.logo_url ? (
@@ -364,13 +342,12 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                 <Routes>
                     <Route path="/" element={<Navigate to="/painel" replace />} />
                     <Route path="/painel" element={<DashboardPage equipamentos={equipamentos} ordens={ordens} />} />
-                    <Route path="/equipamentos" element={<EquipamentosPage allOrders={ordens} onOpenNewOS={handleAbrirChamadoDoInventario} onViewOS={handleViewOS} />} />
+                    <Route path="/equipamentos" element={<EquipamentosPage />} />
                     <Route path="/novo-chamado" element={<AberturaChamadoPage equipamentos={equipamentos} clientes={clientes} showToast={showToast} fetchAll={fetchAll} />} />
-                    <Route path="/ordens" element={<OrdemServicoPage view="lista_atendimento" setView={() => {}} equipamentos={equipamentos} clientes={clientes} tecnicos={tecnicos} ordens={ordens} fetchAll={fetchAll} onRegisterLog={registrarLog} showToast={showToast} targetOsId={targetOsId} />} />
-                    
+                    <Route path="/ordens" element={<OrdemServicoPage equipamentos={equipamentos} clientes={clientes} tecnicos={tecnicos} ordens={ordens} fetchAll={fetchAll} showToast={showToast} targetOsId={targetOsId} />} />
                     <Route path="/estoque" element={<EstoquePage />} />
                     <Route path="/clientes" element={<ClientesPage />} />
-                    <Route path="/tecnologias" element={<TecnologiasPage />} />
+                    <Route path="/tecnologias" element={<DicionarioPage />} /> 
                     <Route path="/equipe" element={<EquipePage />} />
                     <Route path="/cronograma" element={<CronogramaPage />} />
                     <Route path="/indicadores" element={<IndicadoresPage />} />
@@ -403,12 +380,10 @@ export default function App() {
         const initTenant = async () => {
             const slug = getSubdomain();
             
-            // 🚀 BUSCA DUPLA DE SEGURANÇA: Inquilino e Configurações Gerais
             let { data: tData } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
             const { data: configGeral } = await supabase.from('configuracoes_empresa').select('*').eq('id', 1).maybeSingle();
 
             if (tData) {
-                // 🚀 SINCRONIA: Se for o admin ou se não tiver logo própria, ele PUXA a logo da tela de Configurações
                 if (slug === 'admin' || slug === 'atlasum-sistema' || !tData.logo_url) {
                      if (configGeral?.logo_url) tData.logo_url = configGeral.logo_url;
                      if (configGeral?.nome_fantasia) tData.nome_fantasia = configGeral.nome_fantasia;
@@ -420,7 +395,6 @@ export default function App() {
                     alert('Assinatura Bloqueada. Contate o suporte Atlasum.');
                 }
             } else if (configGeral) {
-                // 🚀 FALLBACK: Se a tabela de inquilinos estiver vazia, ele monta com as suas configurações gerais
                 setTenant({
                     id: 1,
                     nome_fantasia: configGeral.nome_fantasia || 'Atlasum',
@@ -465,17 +439,11 @@ export default function App() {
         );
     }
 
-    // 🚀 ROTEAMENTO CORRIGIDO (COM A LANDING PAGE VIVA E A LOGO CERTA)
     return (
         <ErrorBoundary>
             <Routes>
-                {/* Raiz do site: Se não tiver logado, mostra o seu Marketing (Landing Page) */}
                 <Route path="/" element={user ? <Navigate to="/painel" replace /> : <LandingPage />} />
-                
-                {/* Rota de acesso ao sistema (Tela de Login Premium) */}
                 <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => setUser(u)} />} />
-                
-                {/* O resto do sistema (Rotas Privadas) */}
                 <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => setUser(null)} /> : <Navigate to="/login" replace /> } />
             </Routes>
         </ErrorBoundary>

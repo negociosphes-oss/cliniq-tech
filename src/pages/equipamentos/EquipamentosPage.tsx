@@ -2,25 +2,32 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Filter, QrCode, Edit2, Trash2, Loader2, CheckSquare, Square, Printer, FileSpreadsheet, FileDown, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
-// IMPORTANDO OS SERVIÇOS E COMPONENTES
 import { RelatorioInventarioService } from '../../services/RelatorioInventarioService';
 import { EquipamentosForm } from './EquipamentosForm'; 
 import { EquipamentoDetalhes } from './EquipamentoDetalhes'; 
 import { BatchEtiquetasModal } from './components/BatchEtiquetasModal'; 
 
+// 🚀 FAREJADOR DE SUBDOMÍNIO CORRIGIDO
+const getSubdomain = () => {
+  const hostname = window.location.hostname;
+  if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') return 'atlasum-sistema';
+  const parts = hostname.split('.');
+  if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') return parts[0];
+  return 'atlasum-sistema'; 
+};
+
 export function EquipamentosPage() {
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [configEmpresa, setConfigEmpresa] = useState<any>(null);
+  const [tenantId, setTenantId] = useState<number | null>(null);
 
-  // ESTADOS DOS MODAIS
   const [showFormModal, setShowFormModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [selectedEquipForDetails, setSelectedEquipForDetails] = useState<any>(null);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [selectedEquips, setSelectedEquips] = useState<number[]>([]);
 
-  // ESTADOS DOS FILTROS AVANÇADOS
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(''); 
   const [fTag, setFTag] = useState('');
@@ -33,28 +40,39 @@ export function EquipamentosPage() {
   const [fFabricante, setFFabricante] = useState('');
 
   useEffect(() => {
-    fetchData();
-    fetchConfig();
+    const initTenant = async () => {
+      try {
+        const slug = getSubdomain();
+        let { data } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
+        if (data) {
+            setTenantId(data.id);
+            setConfigEmpresa(data); // 🚀 O PDF VAI USAR A CONFIGURAÇÃO DO CLIENTE CERTO AQUI!
+        } else {
+            setTenantId(-1);
+        }
+      } catch (err) {
+        setTenantId(-1);
+      }
+    };
+    initTenant();
   }, []);
 
-  const fetchConfig = async () => {
-      const { data } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
-      if (data) setConfigEmpresa(data);
-  };
+  useEffect(() => {
+      if (tenantId && tenantId > 0) fetchData();
+  }, [tenantId]);
 
-  // 🚀 BUSCA BLINDADA
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 🚀 BUSCA BLINDADA POR TENANT_ID
       const [resEq, resCli] = await Promise.all([
-          supabase.from('equipamentos').select('*').order('created_at', { ascending: false }),
-          supabase.from('clientes').select('id, nome_fantasia')
+          supabase.from('equipamentos').select('*').eq('tenant_id', tenantId).order('created_at', { ascending: false }),
+          supabase.from('clientes').select('id, nome_fantasia').eq('tenant_id', tenantId)
       ]);
 
       if (resEq.error) throw resEq.error;
 
       const cliMap = new Map((resCli.data || []).map(c => [String(c.id), c]));
-
       const eqHidratados = (resEq.data || []).map(eq => ({
           ...eq,
           clienteData: cliMap.get(String(eq.cliente_id))
@@ -68,7 +86,6 @@ export function EquipamentosPage() {
     }
   };
 
-  // 🚀 MOTOR DE FILTRAGEM CRUZADA
   const filteredEquipamentos = equipamentos.filter(eq => {
       const tag = (eq.tag || '').toLowerCase();
       const patrimonio = (eq.patrimonio || '').toLowerCase();
@@ -79,7 +96,6 @@ export function EquipamentosPage() {
       const tipo = (eq.nome || '').toLowerCase();
       const fabricante = (eq.fabricante || '').toLowerCase();
 
-      // Checagem Granular
       if (fTag && !tag.includes(fTag.toLowerCase())) return false;
       if (fPatrimonio && !patrimonio.includes(fPatrimonio.toLowerCase())) return false;
       if (fSerie && !serie.includes(fSerie.toLowerCase())) return false;
@@ -89,17 +105,14 @@ export function EquipamentosPage() {
       if (fTipo && tipo !== fTipo.toLowerCase()) return false;
       if (fFabricante && fabricante !== fFabricante.toLowerCase()) return false;
 
-      // Checagem Global (Busca Rápida)
       if (searchTerm) {
           const term = searchTerm.toLowerCase();
           const matchesGeneral = tag.includes(term) || serie.includes(term) || tipo.includes(term) || cliente.includes(term) || fabricante.includes(term);
           if (!matchesGeneral) return false;
       }
-
       return true;
   });
 
-  // Extrair listas únicas e ordenadas alfabeticamente para os Combobox
   const uniqueClientes = Array.from(new Set(equipamentos.map(eq => eq.clienteData?.nome_fantasia || eq.clientes?.nome_fantasia).filter(Boolean))).sort();
   const uniqueTipos = Array.from(new Set(equipamentos.map(eq => eq.nome).filter(Boolean))).sort();
   const uniqueFabs = Array.from(new Set(equipamentos.map(eq => eq.fabricante).filter(Boolean))).sort();
@@ -110,7 +123,6 @@ export function EquipamentosPage() {
       setSearchTerm('');
   };
 
-  // 🚀 FUNÇÕES DE AÇÃO DA TABELA
   const handleSelectEquip = (id: number) => setSelectedEquips(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const handleSelectAll = () => {
       if (selectedEquips.length === filteredEquipamentos.length) setSelectedEquips([]);
@@ -126,16 +138,10 @@ export function EquipamentosPage() {
     } catch (error: any) { alert('Erro ao excluir: ' + error.message); }
   };
 
-  // 🚀 O FANTASMA MORTO: Função de edição garantida
-  const handleOpenEdit = (id: number) => { 
-      setEditId(id); 
-      setShowFormModal(true); 
-  };
-  
+  const handleOpenEdit = (id: number) => { setEditId(id); setShowFormModal(true); };
   const handleOpenDetails = (equipamento: any) => { setSelectedEquipForDetails(equipamento); };
   const handleCloseForm = () => { setShowFormModal(false); setEditId(null); };
 
-  // EXPORTAÇÕES
   const handleExportExcel = () => {
       const dataToExport = selectedEquips.length > 0 ? filteredEquipamentos.filter(eq => selectedEquips.includes(eq.id)) : filteredEquipamentos;
       RelatorioInventarioService.exportarExcel(dataToExport);
@@ -145,10 +151,10 @@ export function EquipamentosPage() {
       RelatorioInventarioService.imprimirPDF(dataToExport, configEmpresa);
   };
 
+  if (!tenantId) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40}/></div>;
+
   return (
     <div className="p-6 md:p-8 max-w-[1920px] mx-auto min-h-screen animate-fadeIn">
-      
-      {/* HEADER DA PÁGINA */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
         <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg"><QrCode size={24}/></div>
@@ -181,7 +187,6 @@ export function EquipamentosPage() {
         </div>
       </div>
 
-      {/* BARRA DE BUSCA RÁPIDA E BOTÃO DE FILTROS */}
       <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-sm mb-4 flex flex-wrap md:flex-nowrap gap-2 items-center">
         <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
@@ -192,16 +197,13 @@ export function EquipamentosPage() {
         </button>
       </div>
 
-      {/* 🚀 PAINEL DE FILTROS AVANÇADOS INTELIGENTE */}
       {showFilters && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-lg mb-6 animate-slideDown">
               <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
                   <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><SlidersHorizontal size={16} className="text-blue-600"/> Cruzamento de Dados</h3>
                   <button onClick={limparFiltros} className="text-xs font-bold text-rose-500 hover:text-rose-600 border border-rose-200 px-3 py-1.5 rounded-lg hover:bg-rose-50 transition-colors">Limpar Todos</button>
               </div>
-              
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  {/* TEXTOS */}
                   <div>
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">TAG do Ativo</label>
                       <input type="text" className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fTag} onChange={e => setFTag(e.target.value)} placeholder="Ex: TAG-001" />
@@ -214,29 +216,18 @@ export function EquipamentosPage() {
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Nº de Série</label>
                       <input type="text" className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fSerie} onChange={e => setFSerie(e.target.value)} placeholder="Ex: SN..." />
                   </div>
-                  
-                  {/* FIXOS (Poucas opções, `<select>` normal é melhor) */}
                   <div>
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Status de Operação</label>
                       <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fStatus} onChange={e => setFStatus(e.target.value)}>
-                          <option value="">Todos</option>
-                          <option value="operacional">Operacional</option>
-                          <option value="manutenção">Em Manutenção</option>
-                          <option value="inativo">Inativo / Baixado</option>
+                          <option value="">Todos</option><option value="operacional">Operacional</option><option value="manutenção">Em Manutenção</option><option value="inativo">Inativo / Baixado</option>
                       </select>
                   </div>
                   <div>
                       <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">Classe de Risco</label>
                       <select className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-blue-500" value={fRisco} onChange={e => setFRisco(e.target.value)}>
-                          <option value="">Todas</option>
-                          <option value="I - Baixo Risco">I - Baixo Risco</option>
-                          <option value="II - Médio Risco">II - Médio Risco</option>
-                          <option value="III - Alto Risco">III - Alto Risco</option>
-                          <option value="IV - Máximo Risco">IV - Máximo Risco</option>
+                          <option value="">Todas</option><option value="I - Baixo Risco">I - Baixo Risco</option><option value="II - Médio Risco">II - Médio Risco</option><option value="III - Alto Risco">III - Alto Risco</option><option value="IV - Máximo Risco">IV - Máximo Risco</option>
                       </select>
                   </div>
-
-                  {/* 🚀 SUPER DROPDOWNS COM PESQUISA (Comboboxes) */}
                   <SearchableSelect label="Cliente / Unidade" placeholder="Selecionar..." options={uniqueClientes} value={fCliente} onChange={setFCliente} />
                   <SearchableSelect label="Tipo de Equipamento" placeholder="Selecionar..." options={uniqueTipos} value={fTipo} onChange={setFTipo} />
                   <SearchableSelect label="Fabricante" placeholder="Selecionar..." options={uniqueFabs} value={fFabricante} onChange={setFFabricante} />
@@ -244,7 +235,6 @@ export function EquipamentosPage() {
           </div>
       )}
 
-      {/* TABELA DE EQUIPAMENTOS */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse">
@@ -289,26 +279,21 @@ export function EquipamentosPage() {
                                             {isSelected ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
                                         </button>
                                     </td>
-                                    
                                     <td className="p-5" onClick={() => handleOpenDetails(eq)}>
                                         <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${status === 'OPERACIONAL' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>{status}</span>
                                     </td>
-                                    
                                     <td className="p-5" onClick={() => handleOpenDetails(eq)}>
                                         <p className="font-black text-sm text-slate-800">{eq.tag}</p>
                                         <p className="text-xs font-medium text-slate-500 mt-0.5">S/N: {eq.n_serie || 'N/A'}</p>
                                     </td>
-                                    
                                     <td className="p-5" onClick={() => handleOpenDetails(eq)}>
                                         <p className="font-bold text-sm text-slate-800">{nomeEquip}</p>
                                         <p className="text-xs text-slate-500 mt-0.5">{fabricante} {modelo ? `• ${modelo}` : ''}</p>
                                     </td>
-                                    
                                     <td className="p-5" onClick={() => handleOpenDetails(eq)}>
                                         <p className="font-bold text-sm text-blue-600">{nomeCliente}</p>
                                         {eq.setor && <p className="text-xs text-slate-500 mt-0.5">{eq.setor}</p>}
                                     </td>
-                                    
                                     <td className="p-5" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button onClick={() => handleOpenDetails(eq)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Abrir HUB do Equipamento"><QrCode size={18}/></button>
@@ -325,66 +310,40 @@ export function EquipamentosPage() {
         </div>
       </div>
 
-      {showFormModal && <EquipamentosForm isOpen={showFormModal} onClose={handleCloseForm} onSuccess={() => { handleCloseForm(); fetchData(); }} editId={editId} />}
-      {selectedEquipForDetails && <EquipamentoDetalhes isOpen={!!selectedEquipForDetails} onClose={() => setSelectedEquipForDetails(null)} equipamento={selectedEquipForDetails} />}
+      {showFormModal && <EquipamentosForm isOpen={showFormModal} onClose={handleCloseForm} onSuccess={() => { handleCloseForm(); fetchData(); }} editId={editId} tenantId={tenantId} />}
+      {/* 🚀 PASSANDO O TENANT_ID PARA OS DETALHES PARA CORRIGIR O PDF */}
+      {selectedEquipForDetails && <EquipamentoDetalhes isOpen={!!selectedEquipForDetails} onClose={() => setSelectedEquipForDetails(null)} equipamento={selectedEquipForDetails} tenantId={tenantId} />}
       {showBatchModal && <BatchEtiquetasModal equipamentos={equipamentos.filter(eq => selectedEquips.includes(eq.id))} configEmpresa={configEmpresa} onClose={() => setShowBatchModal(false)} />}
     </div>
   );
 }
 
-// 🚀 NOVO COMPONENTE: DROPDOWN PESQUISÁVEL INTERNO (Nível Enterprise)
 function SearchableSelect({ label, options, value, onChange, placeholder }: any) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
-
     const filteredOptions = options.filter((opt: string) => opt.toLowerCase().includes(search.toLowerCase()));
 
     return (
         <div className="relative">
             <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1.5 block">{label}</label>
-            <div
-                className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold flex items-center justify-between cursor-pointer transition-colors hover:border-blue-300"
-                onClick={() => setIsOpen(!isOpen)}
-            >
+            <div className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold flex items-center justify-between cursor-pointer transition-colors hover:border-blue-300" onClick={() => setIsOpen(!isOpen)}>
                 <span className={`truncate mr-2 ${value ? "text-slate-800" : "text-slate-400"}`}>{value || placeholder}</span>
                 <ChevronDown size={14} className="text-slate-400 shrink-0" />
             </div>
 
             {isOpen && (
                 <>
-                    {/* Fundo invisível para fechar o modal ao clicar fora */}
                     <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
-                    
                     <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
                         <div className="p-2 border-b border-slate-100 bg-slate-50">
-                            <input
-                                type="text"
-                                className="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                                placeholder="Pesquisar..."
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                autoFocus
-                            />
+                            <input type="text" className="w-full bg-white border border-slate-200 rounded-md px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors" placeholder="Pesquisar..." value={search} onChange={e => setSearch(e.target.value)} autoFocus />
                         </div>
                         <ul className="max-h-48 overflow-y-auto custom-scrollbar bg-white">
-                            <li
-                                className="px-4 py-2.5 text-xs hover:bg-blue-50 cursor-pointer text-slate-500 font-bold border-b border-slate-50"
-                                onClick={() => { onChange(''); setIsOpen(false); setSearch(''); }}
-                            >
-                                Mostrar Todos
-                            </li>
+                            <li className="px-4 py-2.5 text-xs hover:bg-blue-50 cursor-pointer text-slate-500 font-bold border-b border-slate-50" onClick={() => { onChange(''); setIsOpen(false); setSearch(''); }}>Mostrar Todos</li>
                             {filteredOptions.map((opt: string, i: number) => (
-                                <li
-                                    key={i}
-                                    className={`px-4 py-2.5 text-xs cursor-pointer font-bold border-b border-slate-50 last:border-0 ${value === opt ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-700'}`}
-                                    onClick={() => { onChange(opt); setIsOpen(false); setSearch(''); }}
-                                >
-                                    {opt}
-                                </li>
+                                <li key={i} className={`px-4 py-2.5 text-xs cursor-pointer font-bold border-b border-slate-50 last:border-0 ${value === opt ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-700'}`} onClick={() => { onChange(opt); setIsOpen(false); setSearch(''); }}>{opt}</li>
                             ))}
-                            {filteredOptions.length === 0 && (
-                                <li className="px-4 py-3 text-xs text-slate-400 text-center font-medium">Nenhum resultado</li>
-                            )}
+                            {filteredOptions.length === 0 && <li className="px-4 py-3 text-xs text-slate-400 text-center font-medium">Nenhum resultado</li>}
                         </ul>
                     </div>
                 </>

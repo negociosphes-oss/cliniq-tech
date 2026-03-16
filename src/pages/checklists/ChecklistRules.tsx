@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, ArrowRight, Layers, GitBranch, Loader2 } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
-export function ChecklistRules() {
+interface Props {
+  tenantId: number; // 🚀 PROP INJETADA PARA O TYPESCRIPT E BLINDAGEM
+}
+
+export function ChecklistRules({ tenantId }: Props) {
   const [regras, setRegras] = useState<any[]>([]);
   const [tecnologias, setTecnologias] = useState<any[]>([]);
   const [modelos, setModelos] = useState<any[]>([]);
@@ -17,17 +21,19 @@ export function ChecklistRules() {
   const [novoCheckId, setNovoCheckId] = useState('');
 
   useEffect(() => {
-    fetchDados();
-  }, []);
+    if (tenantId) fetchDados();
+  }, [tenantId]);
 
   const fetchDados = async () => {
     setLoading(true);
-    // 🚀 CORREÇÃO CRÍTICA: Removido o 'nome' de checklists_biblioteca, pedindo apenas o 'titulo' que existe no banco
+    
+    // 🚀 BLINDAGEM APLICADA: Traz as regras e tecnologias do cliente atual
     const [resRegras, resTecs, resMods, resTipos] = await Promise.all([
-      supabase.from('checklists_regras').select('*, tecnologias(nome), checklists_biblioteca(titulo)'),
-      supabase.from('tecnologias').select('id, nome').order('nome'),
-      supabase.from('checklists_biblioteca').select('id, titulo').order('id', { ascending: false }),
-      supabase.from('tipos_ordem_servico').select('*').order('nome') 
+      supabase.from('checklists_regras').select('*, tecnologias(nome), checklists_biblioteca(titulo)').eq('tenant_id', tenantId),
+      supabase.from('tecnologias').select('id, nome').eq('tenant_id', tenantId).order('nome'),
+      // 🚀 MODELOS HÍBRIDOS: Puxa os modelos do cliente + os Modelos Globais da Atlasum (tenant_id = 1)
+      supabase.from('checklists_biblioteca').select('id, titulo, tenant_id').or(`tenant_id.eq.${tenantId},tenant_id.eq.1`).order('id', { ascending: false }),
+      supabase.from('tipos_ordem_servico').select('*').order('nome') // Tipos de OS geralmente são fixos/globais
     ]);
 
     setRegras(resRegras.data || []);
@@ -44,6 +50,7 @@ export function ChecklistRules() {
     const techIdParaSalvar = novoTecId ? Number(novoTecId) : null;
 
     const { error } = await supabase.from('checklists_regras').insert([{
+      tenant_id: tenantId, // 🚀 SALVANDO A REGRA NO LUGAR CERTO
       tipo_servico: novoTipo,
       tecnologia_id: techIdParaSalvar, 
       checklist_id: Number(novoCheckId)
@@ -63,7 +70,7 @@ export function ChecklistRules() {
 
   const handleDelete = async (id: number) => {
     if(!confirm('Remover esta regra de automação?')) return;
-    await supabase.from('checklists_regras').delete().eq('id', id);
+    await supabase.from('checklists_regras').delete().eq('id', id).eq('tenant_id', tenantId);
     fetchDados();
   };
 
@@ -124,7 +131,11 @@ export function ChecklistRules() {
                 onChange={e => setNovoCheckId(e.target.value)}
             >
               <option value="">Selecione o Modelo...</option>
-              {modelos.map(m => <option key={m.id} value={m.id}>{m.titulo || 'Sem Título'}</option>)}
+              {modelos.map(m => (
+                  <option key={m.id} value={m.id}>
+                      {m.titulo || 'Sem Título'} {m.tenant_id === 1 && tenantId !== 1 ? '(Modelo Base)' : ''}
+                  </option>
+              ))}
             </select>
           </div>
 

@@ -3,13 +3,19 @@ import { Plus, Trash2, ChevronRight, FlaskConical, ClipboardCheck, Loader2 } fro
 import { supabase } from '../../../supabaseClient'
 import { ProcedimentosForm } from './ProcedimentosForm'
 
-export function ProcedimentosList() {
+interface Props {
+  tenantId: number; // 🚀 RECEBENDO A CREDENCIAL DO CLIENTE
+}
+
+export function ProcedimentosList({ tenantId }: Props) {
   const [procs, setProcs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
-  useEffect(() => { fetchProcs(); }, []);
+  useEffect(() => { 
+      if (tenantId) fetchProcs(); 
+  }, [tenantId]);
 
   const fetchProcs = async () => {
     try {
@@ -17,7 +23,8 @@ export function ProcedimentosList() {
       const { data, error } = await supabase
         .from('metrologia_procedimentos')
         .select('*, tecnologias(nome)')
-        .eq('status', 'ATIVO') // FILTRO CRÍTICO: Mostra apenas ativos
+        .eq('tenant_id', tenantId) // 🚀 FILTRO DE ISOLAMENTO APLICADO
+        .eq('status', 'ATIVO') 
         .order('titulo');
       
       if (error) throw error;
@@ -29,23 +36,18 @@ export function ProcedimentosList() {
     }
   };
 
-  // AUDITORIA: Função de exclusão lógica (Soft Delete)
-  // Resolve o erro 409 Conflict
   const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation(); // Impede abrir o modal ao clicar no lixo
+    e.stopPropagation(); 
     
     if (!confirm('Deseja ARQUIVAR este protocolo? O histórico de calibrações antigas será mantido.')) return;
 
     try {
-      // Atualiza para INATIVO em vez de deletar fisicamente
       const { error } = await supabase
         .from('metrologia_procedimentos')
         .update({ status: 'INATIVO' })
         .eq('id', id);
 
       if (error) throw error;
-      
-      // Atualiza a lista removendo o item arquivado
       fetchProcs();
     } catch (err: any) {
       alert('Erro ao arquivar: ' + err.message);
@@ -83,7 +85,6 @@ export function ProcedimentosList() {
                 <div className="flex justify-between items-start mb-4 relative z-10">
                     <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl text-indigo-600 group-hover:scale-110 transition-transform"><ClipboardCheck size={24}/></div>
                     
-                    {/* Botão Deletar Corrigido */}
                     <button 
                         onClick={(e) => handleDelete(e, proc.id)} 
                         className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-colors"
@@ -105,12 +106,15 @@ export function ProcedimentosList() {
         </div>
       )}
 
-      <ProcedimentosForm 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={() => { setIsModalOpen(false); fetchProcs(); }} 
-        itemToEdit={selectedItem} 
-      />
+      {isModalOpen && (
+        <ProcedimentosForm 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)} 
+            onSuccess={() => { setIsModalOpen(false); fetchProcs(); }} 
+            itemToEdit={selectedItem} 
+            tenantId={tenantId} // 🚀 REPASSANDO A CREDENCIAL PARA O FORMULÁRIO SALVAR CORRETO
+        />
+      )}
     </div>
   );
 }

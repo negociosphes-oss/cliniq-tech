@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Settings, Zap, Edit, Trash2, Loader2, ShieldCheck, CheckSquare, Type, ToggleLeft, X, BookOpen, Activity, AlertTriangle, Info } from 'lucide-react';
+import { Plus, Zap, Edit, Trash2, Loader2, ShieldCheck, CheckSquare, Type, ToggleLeft, X, BookOpen, Activity, AlertTriangle, Info } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
 interface Props { tenantId: number; }
@@ -19,12 +19,22 @@ export function TseNormasList({ tenantId }: Props) {
 
   const fetchNormas = async () => {
     setLoading(true);
-    const { data } = await supabase.from('metrologia_tse_normas').select('*').eq('tenant_id', tenantId).order('nome_perfil');
+    // 🚀 LÓGICA DE HERANÇA (MULTI-TENANT HÍBRIDO): Puxa as normas do Cliente e também as da Matriz (id = 1) como base.
+    const { data } = await supabase
+      .from('metrologia_tse_normas')
+      .select('*')
+      .or(`tenant_id.eq.${tenantId},tenant_id.eq.1`) 
+      .order('nome_perfil');
+      
     if (data) setNormas(data);
     setLoading(false);
   };
 
   const handleEdit = (norma: any) => {
+    if (norma.tenant_id === 1 && tenantId !== 1) {
+        return alert("Este é um modelo global da Plataforma. Você não pode editá-lo diretamente. Crie um 'Novo Perfil' com base nele se quiser limites diferentes.");
+    }
+    
     setForm({
       nome_perfil: norma.nome_perfil, norma_referencia: norma.norma_referencia || 'NBR IEC 62353', classe_equipamento: norma.classe_equipamento || 'Classe I', tipo_peca_aplicada: norma.tipo_peca_aplicada || 'Tipo BF',
       parametros: typeof norma.parametros === 'string' ? JSON.parse(norma.parametros) : (norma.parametros || [])
@@ -33,6 +43,11 @@ export function TseNormasList({ tenantId }: Props) {
   };
 
   const handleDelete = async (id: number) => {
+    const normaParaDeletar = normas.find(n => n.id === id);
+    if (normaParaDeletar?.tenant_id === 1 && tenantId !== 1) {
+        return alert("Você não pode excluir um modelo base fornecido pela Plataforma.");
+    }
+
     if (!window.confirm('Excluir este perfil de configuração?')) return;
     await supabase.from('metrologia_tse_normas').delete().eq('id', id).eq('tenant_id', tenantId);
     fetchNormas();
@@ -102,7 +117,6 @@ export function TseNormasList({ tenantId }: Props) {
       {activeTab === 'wiki' && (
           <div className="space-y-6 animate-fadeIn pb-24">
               
-              {/* 🚀 AVISO LEGAL DE RESPONSABILIDADE (COMPLIANCE) */}
               <div className="bg-amber-50 dark:bg-amber-900/10 border-l-4 border-amber-500 p-6 rounded-r-3xl shadow-sm flex items-start gap-5">
                   <AlertTriangle size={28} className="text-amber-500 shrink-0 mt-1"/>
                   <div>
@@ -180,11 +194,19 @@ export function TseNormasList({ tenantId }: Props) {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               {normas.map(norma => {
                 const parametros = typeof norma.parametros === 'string' ? JSON.parse(norma.parametros) : (norma.parametros || []);
+                const isGlobalModel = norma.tenant_id === 1 && tenantId !== 1; // 🚀 FLAG DE MODELO GLOBAL
+
                 return (
-                  <div key={norma.id} className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm relative group flex flex-col h-full">
-                    <div className="flex items-start justify-between mb-4">
+                  <div key={norma.id} className={`bg-white dark:bg-slate-800 p-6 rounded-2xl border shadow-sm relative group flex flex-col h-full ${isGlobalModel ? 'border-amber-200 dark:border-amber-900/50' : 'border-slate-200 dark:border-slate-700'}`}>
+                    {/* 🚀 TAG DE MODELO GLOBAL */}
+                    {isGlobalModel && (
+                        <div className="absolute top-0 right-0 bg-amber-100 text-amber-800 text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
+                            Modelo Base
+                        </div>
+                    )}
+                    <div className="flex items-start justify-between mb-4 mt-2">
                         <div className="flex items-center gap-3">
-                          <div className="p-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 rounded-xl"><ShieldCheck size={24}/></div>
+                          <div className={`p-3 rounded-xl ${isGlobalModel ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}><ShieldCheck size={24}/></div>
                           <div>
                               <h3 className="font-black text-slate-800 dark:text-white text-lg leading-tight">{norma.nome_perfil}</h3>
                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{norma.norma_referencia} • {norma.classe_equipamento} • {norma.tipo_peca_aplicada}</p>
@@ -202,8 +224,13 @@ export function TseNormasList({ tenantId }: Props) {
                     </div>
 
                     <div className="flex gap-2 mt-auto">
-                        <button onClick={() => handleEdit(norma)} className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors flex justify-center items-center gap-2"><Edit size={14}/> Editar Estrutura</button>
-                        <button onClick={() => handleDelete(norma.id)} className="p-2.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"><Trash2 size={16}/></button>
+                        <button onClick={() => handleEdit(norma)} className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors flex justify-center items-center gap-2">
+                            {isGlobalModel ? <BookOpen size={14}/> : <Edit size={14}/>} 
+                            {isGlobalModel ? 'Ver Limites (Global)' : 'Editar Estrutura'}
+                        </button>
+                        <button onClick={() => handleDelete(norma.id)} className={`p-2.5 rounded-xl transition-colors ${isGlobalModel ? 'bg-slate-50 text-slate-300 cursor-not-allowed' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}>
+                            <Trash2 size={16}/>
+                        </button>
                     </div>
                   </div>
                 )

@@ -3,7 +3,11 @@ import { Search, Plus, Edit3, Trash2, Loader2, AlertTriangle, ListChecks } from 
 import { supabase } from '../../supabaseClient';
 import { ChecklistBuilder } from './ChecklistBuilder';
 
-export function ChecklistManager() {
+interface Props {
+  tenantId: number;
+}
+
+export function ChecklistManager({ tenantId }: Props) {
   const [modelos, setModelos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
@@ -11,18 +15,23 @@ export function ChecklistManager() {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<any>(null);
 
-  useEffect(() => { fetchModelos(); }, []);
+  useEffect(() => { if (tenantId) fetchModelos(); }, [tenantId]);
 
   const fetchModelos = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('checklists_biblioteca').select('*').order('created_at', { ascending: false });
+      // 🚀 FILTRO MESTRE DE ISOLAMENTO APLICADO
+      const { data, error } = await supabase
+        .from('checklists_biblioteca')
+        .select('*')
+        .eq('tenant_id', tenantId) 
+        .order('created_at', { ascending: false });
+        
       if (error) throw error;
 
       const processados = (data || []).map(m => {
           let count = 0;
           try {
-             // 🚀 Lê a coluna correta do seu banco de dados (itens_configuracao)
              const items = m.itens_configuracao || m.perguntas; 
              if (Array.isArray(items)) count = items.length;
              else if (typeof items === 'string') count = JSON.parse(items).length;
@@ -60,6 +69,7 @@ export function ChecklistManager() {
               isOpen={isBuilderOpen} 
               onClose={() => setIsBuilderOpen(false)} 
               modeloInicial={selectedModel}
+              tenantId={tenantId} // 🚀 REPASSA O TENANT_ID PARA SALVAR NO CLIENTE CERTO
               onSuccess={() => { setIsBuilderOpen(false); fetchModelos(); }}
           />
       );
@@ -156,7 +166,7 @@ export function ChecklistManager() {
                         );
                     })}
                     {lista.length === 0 && (
-                        <tr><td colSpan={4} className="p-12 text-center text-theme-muted font-bold border-t border-dashed border-theme">Nenhum modelo de checklist encontrado.</td></tr>
+                        <tr><td colSpan={4} className="p-12 text-center text-theme-muted font-bold border-t border-dashed border-theme">Nenhum modelo de checklist encontrado para este ambiente.</td></tr>
                     )}
                 </tbody>
             </table>

@@ -6,10 +6,11 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   modeloInicial: any;
+  tenantId: number; // 🚀 RECEBE O TENANT_ID PARA SALVAR CORRETO
   onSuccess: () => void;
 }
 
-export function ChecklistBuilder({ isOpen, onClose, modeloInicial, onSuccess }: Props) {
+export function ChecklistBuilder({ isOpen, onClose, modeloInicial, tenantId, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [currentModel, setCurrentModel] = useState<any>({ titulo: '', descricao: '', tipo_os: '', itens_configuracao: [] });
   
@@ -62,8 +63,8 @@ export function ChecklistBuilder({ isOpen, onClose, modeloInicial, onSuccess }: 
     if (!currentModel.titulo) return alert('Obrigatório preencher o Nome do Checklist.');
     setLoading(true);
 
-    // 🚀 Payload exato exigido pelo seu Banco de Dados
     const payload = {
+      tenant_id: tenantId, // 🚀 SALVANDO A BIBLIOTECA NO LUGAR CERTO
       titulo: currentModel.titulo,
       descricao: currentModel.descricao,
       tipo_os: currentModel.tipo_os || null, 

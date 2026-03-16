@@ -1,10 +1,38 @@
-import { useState } from 'react';
-import { ClipboardList, GitBranch, ListChecks } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ClipboardList, GitBranch, ListChecks, Loader2 } from 'lucide-react';
 import { ChecklistManager } from './ChecklistManager';
 import { ChecklistRules } from './ChecklistRules';
+import { supabase } from '../../supabaseClient';
+
+// 🚀 FAREJADOR DE SUBDOMÍNIO
+const getSubdomain = () => {
+  const hostname = window.location.hostname;
+  const parts = hostname.split('.');
+  if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
+      return parts[0];
+  }
+  return 'admin'; 
+};
 
 export function ChecklistPage() {
   const [activeTab, setActiveTab] = useState<'modelos' | 'regras'>('modelos');
+  const [tenantId, setTenantId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const initTenant = async () => {
+      try {
+        const slug = getSubdomain();
+        let { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
+        if (data) setTenantId(data.id);
+        else setTenantId(-1);
+      } catch (err) {
+        setTenantId(-1);
+      }
+    };
+    initTenant();
+  }, []);
+
+  if (!tenantId) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-primary-theme" size={32}/></div>;
 
   return (
     <div className="p-8 animate-fadeIn max-w-[1600px] mx-auto pb-24">
@@ -45,9 +73,9 @@ export function ChecklistPage() {
         </button>
       </div>
 
-      {/* ÁREA DE CONTEÚDO */}
+      {/* ÁREA DE CONTEÚDO (PASSANDO O TENANT_ID PARA BLINDAR AS LISTAS) */}
       <div className="bg-theme-card rounded-3xl shadow-sm border border-theme min-h-[600px] p-6 relative">
-        {activeTab === 'modelos' ? <ChecklistManager /> : <ChecklistRules />}
+        {activeTab === 'modelos' ? <ChecklistManager tenantId={tenantId} /> : <ChecklistRules tenantId={tenantId} />}
       </div>
       
     </div>
