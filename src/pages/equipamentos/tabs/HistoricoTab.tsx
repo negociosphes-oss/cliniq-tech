@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Printer, Eye, Edit3, ArrowUpDown, ChevronDown, ChevronUp, CheckSquare, Square, Filter } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 import { RelatorioOSService } from '../../../services/RelatorioOSService';
@@ -6,6 +7,8 @@ import { RelatorioOSService } from '../../../services/RelatorioOSService';
 interface Props { equipamento: any; historico: any[]; loading: boolean; }
 
 export function HistoricoTab({ equipamento, historico, loading }: Props) {
+  const navigate = useNavigate(); // 🚀 NAVEGADOR INTERNO ATIVADO
+  
   const [filtroBusca, setFiltroBusca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroDataInicio, setFiltroDataInicio] = useState('');
@@ -16,11 +19,11 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
   const [configEmpresa, setConfigEmpresa] = useState<any>(null);
 
-  // Busca a configuração da empresa para o Relatório sair com Logo e Nome corretos
+  // Busca a configuração da empresa para os Relatórios
   useEffect(() => {
       const loadConfig = async () => {
           if (equipamento?.tenant_id) {
-              const { data } = await supabase.from('empresas_inquilinas').select('*').eq('id', equipamento.tenant_id).maybeSingle();
+              const { data } = await supabase.from('configuracoes_empresa').select('*').eq('tenant_id', equipamento.tenant_id).maybeSingle();
               if (data) setConfigEmpresa(data);
           }
       };
@@ -30,7 +33,7 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
   const historicoFiltrado = useMemo(() => {
       let dados = historico.filter(os => {
           const searchL = filtroBusca.toLowerCase();
-          const matchBusca = os.id.toString().includes(searchL) || (os.defeito_relatado || '').toLowerCase().includes(searchL);
+          const matchBusca = os.id.toString().includes(searchL) || (os.defeito_relatado || '').toLowerCase().includes(searchL) || (os.tecnico_nome || '').toLowerCase().includes(searchL);
           const matchTipo = filtroTipo ? os.tipo === filtroTipo : true;
           
           const dataOs = new Date(os.created_at);
@@ -69,16 +72,13 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
       else setSelectedOsIds(historicoFiltrado.map(os => os.id));
   };
 
-  // 🚀 MOTOR DE IMPRESSÃO (LIGADO NO NOVO MOTOR DE FICHAS DE O.S.)
-  const handlePrint = (osList: any[]) => {
+  const handlePrintBatch = (osList: any[]) => {
       if (!osList || osList.length === 0) return alert('Selecione pelo menos uma O.S. para imprimir.');
-      // Formata os dados para o RelatorioOSService entender (ele precisa do objeto equipamento e cliente dentro da OS)
       const ordensFormatadas = osList.map(os => ({
           ...os,
           equipamento: equipamento,
-          cliente: equipamento.clienteData || equipamento.clientes
+          cliente: equipamento.clienteData || equipamento.clientes || equipamento.cliente
       }));
-      // Chama o método atualizado que desenha a folha A4 real
       RelatorioOSService.imprimirFichaOS(ordensFormatadas, configEmpresa);
   };
 
@@ -90,13 +90,19 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 flex items-center gap-1"><Filter size={12}/> Buscar</label>
              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                <input type="text" placeholder="Nº O.S. ou Defeito..." className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 transition-colors" value={filtroBusca} onChange={e => setFiltroBusca(e.target.value)}/>
+                <input type="text" placeholder="Nº O.S., Defeito ou Técnico..." className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 transition-colors" value={filtroBusca} onChange={e => setFiltroBusca(e.target.value)}/>
              </div>
           </div>
-          <div className="w-40">
+          <div className="w-44">
              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Tipo de O.S.</label>
              <select className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm font-medium outline-none focus:border-blue-500 bg-white transition-colors" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}>
-                 <option value="">Todos</option><option value="Corretiva">Corretiva</option><option value="Preventiva">Preventiva</option><option value="Calibração">Calibração</option><option value="Segurança Elétrica">Seg. Elétrica</option>
+                 <option value="">Todos</option>
+                 <option value="Corretiva">Corretiva</option>
+                 <option value="Preventiva">Preventiva</option>
+                 <option value="Calibração">Calibração</option>
+                 {/* 🚀 NOME EXATO PARA O FILTRO FUNCIONAR */}
+                 <option value="Teste de Segurança Elétrica">Teste de Seg. Elétrica</option>
+                 <option value="Instalação">Instalação</option>
              </select>
           </div>
           <div className="w-36">
@@ -113,8 +119,8 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
           <div className="flex items-center gap-3">
               <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">Histórico de Atividades</h3>
               {selectedOsIds.length > 0 && (
-                  <button onClick={() => handlePrint(historicoFiltrado.filter(os => selectedOsIds.includes(os.id)))} className="text-xs font-bold flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-emerald-700 hover:shadow-lg transition-all animate-fadeIn">
-                      <Printer size={16}/> Relatório em Lote ({selectedOsIds.length})
+                  <button onClick={() => handlePrintBatch(historicoFiltrado.filter(os => selectedOsIds.includes(os.id)))} className="text-xs font-bold flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-emerald-700 hover:shadow-lg transition-all animate-fadeIn">
+                      <Printer size={16}/> Imprimir Lote ({selectedOsIds.length})
                   </button>
               )}
           </div>
@@ -161,13 +167,38 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
                                         {selectedOsIds.includes(os.id) ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18}/>}
                                     </button>
                                 </td>
+                                
                                 <td className="p-4">
                                     <div className="flex items-center justify-center gap-3 text-teal-600">
-                                        <button title="Visualizar O.S." onClick={() => window.open(`/ordens?id=${os.id}`, '_blank')} className="hover:text-blue-600 transition-transform hover:scale-110"><Eye size={18}/></button>
-                                        <button title="Imprimir PDF" onClick={() => handlePrint([os])} className="hover:text-blue-600 transition-transform hover:scale-110"><Printer size={18}/></button>
-                                        <button title="Editar O.S." onClick={() => window.open(`/ordens?id=${os.id}&edit=true`, '_blank')} className="hover:text-blue-600 transition-transform hover:scale-110"><Edit3 size={18}/></button>
+                                        {/* 🚀 OLHO: Abre a Visualização Pública (PDF Azul) na nova aba */}
+                                        <button 
+                                            title="Visualizar PDF Oficial" 
+                                            onClick={() => window.open(`/view/os/${os.id_publico || os.id}`, '_blank')} 
+                                            className="hover:text-blue-600 transition-transform hover:scale-110"
+                                        >
+                                            <Eye size={18}/>
+                                        </button>
+
+                                        {/* 🚀 IMPRESSORA: Chama a tela pública já com comando de print=true */}
+                                        <button 
+                                            title="Imprimir Laudo" 
+                                            onClick={() => window.open(`/view/os/${os.id_publico || os.id}?print=true`, '_blank')} 
+                                            className="hover:text-blue-600 transition-transform hover:scale-110"
+                                        >
+                                            <Printer size={18}/>
+                                        </button>
+
+                                        {/* 🚀 LÁPIS: Navega internamente para a Gestão de OS (abre o Modal Completo c/ Laudos e Testes) */}
+                                        <button 
+                                            title="Abrir no Painel de OS" 
+                                            onClick={() => navigate('/ordens', { state: { targetOsId: os.id } })} 
+                                            className="hover:text-blue-600 transition-transform hover:scale-110"
+                                        >
+                                            <Edit3 size={18}/>
+                                        </button>
                                     </div>
                                 </td>
+
                                 <td className="p-4 font-black text-slate-700">{os.id}</td>
                                 <td className="p-4">
                                    <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${os.status === 'Concluída' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-amber-200 text-amber-700 bg-amber-50'}`}>
@@ -177,12 +208,17 @@ export function HistoricoTab({ equipamento, historico, loading }: Props) {
                                 <td className="p-4 text-xs font-bold text-slate-600 max-w-[200px] truncate" title={equipamento.clienteData?.nome_fantasia || equipamento.clientes?.nome_fantasia || 'N/A'}>
                                     {equipamento.clienteData?.nome_fantasia || equipamento.clientes?.nome_fantasia || 'N/A'}
                                 </td>
-                                <td className="p-4 text-xs font-medium text-slate-500">Técnico ID: {os.tecnico_id || 'Não atribuído'}</td>
+                                
+                                {/* 🚀 EXIBIÇÃO DO TÉCNICO CORRIGIDA: Puxa o nome se tiver, se não puxa o ID */}
+                                <td className="p-4 text-xs font-medium text-slate-500 uppercase">
+                                    {os.tecnico_nome || os.tecnico?.nome || (os.tecnico_id ? `Técnico #${os.tecnico_id}` : 'Não atribuído')}
+                                </td>
+
                                 <td className="p-4 text-xs font-bold text-slate-700">{os.tipo}</td>
                                 <td className="p-4 text-xs font-medium text-slate-500">{new Date(os.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                                 <td className="p-4 text-xs font-medium text-slate-500">{os.data_fechamento ? new Date(os.data_fechamento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
                                 <td className="p-4 text-xs font-black text-slate-500 uppercase">Normal</td>
-                                <td className="p-4 text-xs font-medium text-slate-500 max-w-[250px] truncate" title={os.defeito_relatado}>{os.defeito_relatado || 'Manutenção Preventiva Padrão'}</td>
+                                <td className="p-4 text-xs font-medium text-slate-500 max-w-[250px] truncate" title={os.defeito_relatado}>{os.defeito_relatado || os.descricao_problema || 'Manutenção Preventiva Padrão'}</td>
                             </tr>
                         ))
                     )}

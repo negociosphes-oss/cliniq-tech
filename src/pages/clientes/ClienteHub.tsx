@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Save, Building, MapPin, FileText, UploadCloud, Download, DollarSign, Landmark, Receipt, FilePlus, Loader2, Trash2, Search, Filter, ShieldCheck } from 'lucide-react';
+import { X, Save, Building, MapPin, FileText, UploadCloud, Download, DollarSign, Landmark, Receipt, FilePlus, Loader2, Trash2, Search, Filter, ShieldCheck, Clock } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { format, isAfter, parseISO } from 'date-fns';
 
@@ -8,9 +8,10 @@ interface Props {
   onClose: () => void;
   cliente: any;
   onUpdate: () => void;
+  tenantId?: number; // 🚀 INQUILINO RECEBIDO AQUI
 }
 
-export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
+export function ClienteHub({ isOpen, onClose, cliente, onUpdate, tenantId }: Props) {
   const [activeTab, setActiveTab] = useState<'cadastro' | 'financeiro' | 'contratos'>('cadastro');
   const [loading, setLoading] = useState(false);
   
@@ -23,7 +24,9 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
     return { 
         razao_social: '', nome_fantasia: '', doc_id: '', email: '', telefone: '',
         cep: '', endereco: '', cidade: '', estado: '', responsavel: '',
-        banco: '', agencia: '', conta: '', chave_pix: '', condicao_pagamento: ''
+        banco: '', agencia: '', conta: '', chave_pix: '', condicao_pagamento: '',
+        // 🚀 INICIALIZANDO OS CAMPOS DE SLA
+        sla_critica_horas: '', sla_alta_horas: '', sla_media_horas: '', sla_baixa_horas: ''
     };
   });
 
@@ -51,7 +54,6 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
     setContratos(data || []);
   };
 
-  // LÓGICA DE FILTRO RESTAURADA
   const documentosFiltrados = useMemo(() => {
     return documentos.filter(doc => {
         const matchesBusca = doc.numero_documento.toLowerCase().includes(buscaDoc.toLowerCase()) || doc.tipo.toLowerCase().includes(buscaDoc.toLowerCase());
@@ -73,12 +75,21 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
     e.preventDefault();
     setLoading(true);
     try {
+        // 🚀 TRATAMENTO INTELIGENTE: Se o campo estiver vazio, envia NULL pro banco usar o SLA padrão!
+        const payload = { ...formData };
+        if (payload.sla_critica_horas === '') payload.sla_critica_horas = null;
+        if (payload.sla_alta_horas === '') payload.sla_alta_horas = null;
+        if (payload.sla_media_horas === '') payload.sla_media_horas = null;
+        if (payload.sla_baixa_horas === '') payload.sla_baixa_horas = null;
+
         if (cliente?.id) {
-            await supabase.from('clientes').update(formData).eq('id', cliente.id);
+            await supabase.from('clientes').update(payload).eq('id', cliente.id);
             alert('Cadastro atualizado!');
             onUpdate();
         } else {
-            const { data, error } = await supabase.from('clientes').insert([formData]).select().single();
+            // Se for cliente novo, amarra ele ao Tenant do Prestador
+            payload.tenant_id = tenantId || 1;
+            const { data, error } = await supabase.from('clientes').insert([payload]).select().single();
             if (error) throw error;
             alert('Cliente criado com sucesso!');
             onUpdate();
@@ -170,13 +181,37 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
                         <Field label="Razão Social" value={formData.razao_social} onChange={(e:any) => setFormData({...formData, razao_social: e.target.value})} />
                         <Field label="E-mail" value={formData.email} onChange={(e:any) => setFormData({...formData, email: e.target.value})} />
                     </div>
+
+                    {/* 🚀 NOVO BLOCO: CONFIGURAÇÃO DE SLA POR CLIENTE */}
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+                        <div className="mb-6">
+                            <h3 className="text-sm font-black text-slate-800 flex items-center gap-2 uppercase tracking-widest"><Clock size={18} className="text-rose-500"/> SLA de Atendimento Exclusivo</h3>
+                            <p className="text-xs text-slate-500 mt-1">Defina prazos customizados para este cliente de acordo com o contrato. Se deixado em branco, o sistema usará o SLA padrão configurado pela sua empresa.</p>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                                <label className="text-[10px] font-black uppercase text-red-600 mb-1 block">SLA Crítica (Horas)</label>
+                                <input type="number" value={formData.sla_critica_horas || ''} onChange={e => setFormData({...formData, sla_critica_horas: e.target.value})} className="w-full bg-white border border-red-200 rounded-xl px-4 h-10 font-black text-red-700 outline-none placeholder:text-red-300 placeholder:font-medium" min="1" placeholder="Padrão" />
+                            </div>
+                            <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                                <label className="text-[10px] font-black uppercase text-orange-600 mb-1 block">SLA Alta (Horas)</label>
+                                <input type="number" value={formData.sla_alta_horas || ''} onChange={e => setFormData({...formData, sla_alta_horas: e.target.value})} className="w-full bg-white border border-orange-200 rounded-xl px-4 h-10 font-black text-orange-700 outline-none placeholder:text-orange-300 placeholder:font-medium" min="1" placeholder="Padrão" />
+                            </div>
+                            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                                <label className="text-[10px] font-black uppercase text-blue-600 mb-1 block">SLA Média (Horas)</label>
+                                <input type="number" value={formData.sla_media_horas || ''} onChange={e => setFormData({...formData, sla_media_horas: e.target.value})} className="w-full bg-white border border-blue-200 rounded-xl px-4 h-10 font-black text-blue-700 outline-none placeholder:text-blue-300 placeholder:font-medium" min="1" placeholder="Padrão" />
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <label className="text-[10px] font-black uppercase text-slate-600 mb-1 block">SLA Baixa (Horas)</label>
+                                <input type="number" value={formData.sla_baixa_horas || ''} onChange={e => setFormData({...formData, sla_baixa_horas: e.target.value})} className="w-full bg-white border border-slate-300 rounded-xl px-4 h-10 font-black text-slate-700 outline-none placeholder:text-slate-400 placeholder:font-medium" min="1" placeholder="Padrão" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
             {activeTab === 'financeiro' && (
                 <div className="max-w-5xl mx-auto space-y-6">
-                    
-                    {/* BARRA DE FILTROS RESTAURADA */}
                     <div className="flex flex-col md:flex-row gap-4 items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="flex-1 relative w-full">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
@@ -199,7 +234,6 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
                         </div>
                     </div>
 
-                    {/* FORM DE UPLOAD */}
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                         <div className="md:col-span-1">
                             <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">Tipo</label>
@@ -224,7 +258,6 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
                         </div>
                     </div>
 
-                    {/* LISTA DE DOCUMENTOS */}
                     <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
                         <table className="w-full text-left">
                             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
@@ -254,7 +287,6 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
                 </div>
             )}
 
-            {/* ABA CONTRATOS */}
             {activeTab === 'contratos' && (
                 <div className="max-w-5xl mx-auto space-y-6">
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -303,7 +335,7 @@ export function ClienteHub({ isOpen, onClose, cliente, onUpdate }: Props) {
         <div className="p-6 border-t border-slate-200 bg-white flex justify-end gap-3 shrink-0">
             <button onClick={onClose} className="px-6 py-3 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-xl">Fechar Janela</button>
             <button onClick={handleSaveCliente} disabled={loading} className="bg-slate-900 text-white px-10 py-3 rounded-2xl font-black text-xs shadow-xl flex items-center gap-2 hover:bg-black transition-all">
-                <Save size={18}/> GRAVAR ALTERAÇÕES
+                {loading ? <Loader2 size={18} className="animate-spin"/> : <Save size={18}/>} GRAVAR ALTERAÇÕES
             </button>
         </div>
       </div>

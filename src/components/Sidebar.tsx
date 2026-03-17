@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import { 
   LayoutDashboard, Megaphone, ClipboardList, Monitor, Package, 
   Cpu, Calendar, Scale, FileCheck, BookOpen, Briefcase, Calculator, 
-  DollarSign, Users, Settings, Globe, LogOut, ChevronLeft, ChevronRight 
+  DollarSign, Users, Settings, Globe, LogOut, ChevronLeft, ChevronRight, Zap 
 } from 'lucide-react';
 import type { Config, Usuario } from '../types';
 import { ATLAS_THEMES } from '../constants/themes'; 
@@ -73,6 +73,7 @@ export function Sidebar({
     { section: 'Métricas & Gestão', id: 'painel', label: 'Painel Geral', icon: LayoutDashboard },
     { id: 'indicadores', label: 'Indicadores (BI)', icon: PieChart },
     { section: 'Operação em Campo', id: 'novo-chamado', label: 'Novo Chamado', icon: Megaphone },
+    { id: 'central', label: 'Central (Triagem)', icon: Zap }, // 🚀 NOVO BOTÃO CENTRAL AQUI
     { id: 'ordens', label: 'Ordens de Serviço', icon: ClipboardList },
     { id: 'equipamentos', label: 'Ativos & Inventário', icon: Monitor },
     { section: 'Engenharia Clínica', id: 'cronograma', label: 'Plano Diretor', icon: Calendar },
@@ -105,6 +106,7 @@ export function Sidebar({
       const regrasPadrao: Record<string, string[]> = {
           'painel': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
           'novo-chamado': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
+          'central': ['administrativo', 'gestor'], // 🚀 REGRAS DE PERMISSÃO DA CENTRAL
           'ordens': ['administrativo', 'gestor', 'tecnico', 'cliente'],
           'equipamentos': ['administrativo', 'gestor', 'tecnico', 'cliente'],
           'manuais': ['administrativo', 'gestor', 'tecnico', 'cliente'],
@@ -224,7 +226,6 @@ export function Sidebar({
                   <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider text-center bg-blue-50 py-0.5 rounded-md mx-2">
                       {config?.id === 1 && normalizedRole === 'master' ? 'SUPER ADMIN' : normalizedRole}
                   </span>
-                  {/* 🚀 SILENCIADOR DO TYPESCRIPT APLICADO AQUI: (user as any) */}
                   <span className="text-xs font-bold text-slate-800 text-center truncate">{user?.nome || 'Sua Conta'}</span>
               </div>
               <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-3.5 bg-white text-rose-500 hover:bg-rose-50 border border-slate-200 rounded-xl transition-all duration-300 active:scale-95 shadow-sm">

@@ -14,10 +14,10 @@ import { ErrorBoundary } from './pages/ordem-servico/components/ErrorBoundary'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
 import { IndicadoresPage } from './pages/indicadores/IndicadoresPage'
 import { BibliotecaPage } from './pages/biblioteca/BibliotecaPage'
-import { OSPublicView } from './pages/public/OSPublicView' 
 import { EquipamentosPage } from './pages/equipamentos/EquipamentosPage'
 import { OrdemServicoPage } from './pages/ordem-servico/OrdemServicoPage'
 import { AberturaChamadoPage } from './pages/ordem-servico/AberturaChamadoPage'
+import { CentralChamados } from './pages/ordem-servico/CentralChamados' // 🚀 IMPORT DA NOVA CENTRAL DE SLA
 import { CronogramaPage } from './pages/cronograma/CronogramaPage' 
 import { DicionarioPage } from './pages/tecnologia/DicionarioPage' 
 import { ClientesPage } from './pages/clientes/ClientesPage'
@@ -31,9 +31,12 @@ import { AdminGeralPage } from './pages/admin-geral/AdminGeralPage'
 import { EstoquePage } from './pages/estoque/EstoquePage'
 import { LandingPage } from './pages/landing/LandingPage'
 
-import type { Usuario, Config, Cliente, Tecnologia, Equipamento, Tecnico, OrdemServico } from './types' 
+// 🚀 AS DUAS ROTAS PÚBLICAS
+import { OSPublicView } from './pages/public/OSPublicView' 
+import { AberturaChamadoPublico } from './pages/public/AberturaChamadoPublico' 
 
-// 🚀 FAREJADOR DE SUBDOMÍNIO
+import type { Usuario, Config, Cliente, Equipamento, Tecnico, OrdemServico } from './types' 
+
 const getSubdomain = () => {
     const hostname = window.location.hostname;
     if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') return 'atlasum-sistema'; 
@@ -53,7 +56,6 @@ function Toast({ message, type, onClose }: { message: string, type: 'success' | 
   )
 }
 
-// 🚀 TELA DE LOGIN OTIMIZADA PARA MOBILE (100dvh e overflow-y-auto)
 function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => void, tenant: any }) {
   const [email, setEmail] = useState(''); 
   const [senha, setSenha] = useState(''); 
@@ -86,8 +88,6 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
 
   return (
     <div className="min-h-[100dvh] w-full flex bg-slate-50 font-sans selection:bg-blue-500 selection:text-white">
-      
-      {/* LADO ESQUERDO: BANNER (Escondido no Mobile) */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-16 bg-slate-900" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #020617 100%)` }}>
          <div className="absolute top-[-20%] left-[-10%] w-[50rem] h-[50rem] bg-white/5 rounded-full blur-[120px] animate-pulse pointer-events-none"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-blue-500/20 rounded-full blur-[100px] pointer-events-none"></div>
@@ -120,13 +120,10 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
          </div>
       </div>
 
-      {/* LADO DIREITO: LOGIN (100% da tela no Mobile, com rolagem inteligente) */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 relative bg-[#f8fafc] overflow-y-auto h-[100dvh] custom-scrollbar">
-         {/* Gradiente de fundo no topo (mobile) com pointer-events-none para não bloquear cliques */}
          <div className="absolute top-0 left-0 w-full h-64 opacity-20 lg:hidden pointer-events-none" style={{ background: `linear-gradient(180deg, ${primaryColor} 0%, transparent 100%)` }}></div>
 
          <div className="w-full max-w-[420px] animate-slideUp relative z-10 my-auto py-8">
-             
              <div className="text-center mb-8">
                  <div className="flex justify-center mb-6">
                      {tenant?.logo_url ? (
@@ -145,7 +142,6 @@ function Login({ onLoginSuccess, tenant }: { onLoginSuccess: (user: Usuario) => 
 
              <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100">
                  <form onSubmit={handleLogin} className="flex flex-col gap-5 sm:gap-6">
-                    
                     <div className="space-y-2 group">
                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1 group-focus-within:text-blue-600 transition-colors">E-mail Corporativo</label>
                         <div className="relative">
@@ -209,13 +205,19 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   const [toast, setToast] = useState<{msg: string, type: 'success'|'error'|'info'} | null>(null);
   const [themeColor, setThemeColor] = useState(tenant?.cor_primaria || '#1e3a8a'); 
 
-  const [config] = useState<Config>({ 
+  // Carrega a configuração dinâmica
+  const config = { 
       id: tenant?.id, 
-      nome_empresa: tenant?.nome_fantasia, 
+      nome_empresa: tenant?.nome_fantasia || 'Atlasum', 
       logo_url: tenant?.logo_url, 
       cor_primaria: tenant?.cor_primaria || '#1e3a8a', 
-      cor_secundaria: '#f8fafc' 
-  });
+      cor_secundaria: '#f8fafc',
+      os_tipos_restrito: tenant?.os_tipos_restrito || false,
+      sla_critica_horas: tenant?.sla_critica_horas || 2,
+      sla_alta_horas: tenant?.sla_alta_horas || 6,
+      sla_media_horas: tenant?.sla_media_horas || 24,
+      sla_baixa_horas: tenant?.sla_baixa_horas || 48
+  };
 
   const [clientes, setClientes] = useState<Cliente[]>([]); 
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]); 
@@ -248,32 +250,36 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
     try {
         const [resCli, resTec, resTcn, resUsr] = await Promise.all([
             supabase.from('clientes').select('*').eq('tenant_id', tenant.id),
-            supabase.from('tecnologias').select('*').eq('tenant_id', tenant.id), 
+            supabase.from('dict_tecnologias').select('*'), 
             supabase.from('equipe_tecnica').select('*').eq('tenant_id', tenant.id),
             supabase.from('usuarios').select('*').eq('tenant_id', tenant.id)
         ]);
 
         setClientes(resCli.data || []);
-        
-        const usuariosData = resUsr.data || [];
+        const clientesData = resCli.data || [];
+        const tecnologiasData = resTec.data || [];
         
         let tecnicosData = resTcn.data || [];
+        const usuariosData = resUsr.data || [];
         if (tecnicosData.length === 0 && usuariosData.length > 0) {
             tecnicosData = usuariosData.map((u: any) => ({ id: u.id, nome: u.nome, especialidade: u.cargo }));
         }
         setTecnicos(tecnicosData);
 
-        const tecnologiasData = resTec.data || [];
-        const clientesData = resCli.data || [];
-
         let equipamentosFinal: any[] = [];
         const { data: eqRaw } = await supabase.from('equipamentos').select('*').eq('tenant_id', tenant.id).order('id', {ascending: false});
+        
         if (eqRaw) {
-            equipamentosFinal = eqRaw.map(eq => ({
-                ...eq,
-                tecnologia: tecnologiasData.find((t: any) => t.id === eq.tecnologia_id) || null,
-                cliente: clientesData.find((c: any) => c.id === eq.cliente_id) || null,
-            }));
+            equipamentosFinal = eqRaw.map(eq => {
+                const tec = tecnologiasData.find((t: any) => String(t.id) === String(eq.modelo_dict_id) || String(t.id) === String(eq.tecnologia_id));
+                const cli = clientesData.find((c: any) => String(c.id) === String(eq.cliente_id));
+                return {
+                    ...eq,
+                    tecnologia: tec || null,
+                    cliente: cli || null,
+                    nome: eq.nome || tec?.nome || 'Equipamento'
+                };
+            });
         }
         setEquipamentos(equipamentosFinal);
 
@@ -343,8 +349,12 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                     <Route path="/" element={<Navigate to="/painel" replace />} />
                     <Route path="/painel" element={<DashboardPage equipamentos={equipamentos} ordens={ordens} />} />
                     <Route path="/equipamentos" element={<EquipamentosPage />} />
-                    <Route path="/novo-chamado" element={<AberturaChamadoPage equipamentos={equipamentos} clientes={clientes} showToast={showToast} fetchAll={fetchAll} />} />
+                    <Route path="/novo-chamado" element={<AberturaChamadoPage equipamentos={equipamentos} clientes={clientes} showToast={showToast} fetchAll={fetchAll} user={user} configEmpresa={config} />} />
                     <Route path="/ordens" element={<OrdemServicoPage equipamentos={equipamentos} clientes={clientes} tecnicos={tecnicos} ordens={ordens} fetchAll={fetchAll} showToast={showToast} targetOsId={targetOsId} />} />
+                    
+                    {/* 🚀 A ROTA DA CENTRAL DE SLA ADICIONADA AQUI! */}
+                    <Route path="/central" element={<CentralChamados ordens={ordens} equipamentos={equipamentos} tecnicos={tecnicos} configEmpresa={config} fetchAll={fetchAll} showToast={showToast} />} />
+                    
                     <Route path="/estoque" element={<EstoquePage />} />
                     <Route path="/clientes" element={<ClientesPage />} />
                     <Route path="/tecnologias" element={<DicionarioPage />} /> 
@@ -374,32 +384,53 @@ export default function App() {
     const [loadingTenant, setLoadingTenant] = useState(true);
     const [user, setUser] = useState<Usuario | null>(null); 
 
-    const isPublicView = window.location.pathname.startsWith('/view/os');
+    // 🚀 LÓGICA DE ROTAS PÚBLICAS
+    const isPublicViewOS = window.location.pathname.startsWith('/view/os');
+    const isPublicAbertura = window.location.pathname.startsWith('/abrir-chamado');
 
     useEffect(() => {
         const initTenant = async () => {
             const slug = getSubdomain();
-            
             let { data: tData } = await supabase.from('empresas_inquilinas').select('*').eq('slug_subdominio', slug).maybeSingle();
-            const { data: configGeral } = await supabase.from('configuracoes_empresa').select('*').eq('id', 1).maybeSingle();
+            
+            let tenantIdBusca = tData ? tData.id : 1;
+            
+            let { data: configDaEmpresa } = await supabase.from('configuracoes_empresa').select('*').eq('tenant_id', tenantIdBusca).maybeSingle();
+            if (!configDaEmpresa) {
+                const { data: fallback } = await supabase.from('configuracoes_empresa').select('*').limit(1).maybeSingle();
+                configDaEmpresa = fallback;
+            }
 
             if (tData) {
-                if (slug === 'admin' || slug === 'atlasum-sistema' || !tData.logo_url) {
-                     if (configGeral?.logo_url) tData.logo_url = configGeral.logo_url;
-                     if (configGeral?.nome_fantasia) tData.nome_fantasia = configGeral.nome_fantasia;
-                }
+                const logoEncontrada = configDaEmpresa?.logo_url || configDaEmpresa?.logotipo_url || tData.logo_url;
                 
+                tData.logo_url = logoEncontrada ? `${logoEncontrada}?v=${new Date().getTime()}` : null;
+                tData.nome_fantasia = configDaEmpresa?.nome_fantasia || configDaEmpresa?.nome_empresa || tData.nome_fantasia;
+                
+                // Repassando os SLAs que puxou do banco!
+                tData.os_tipos_restrito = configDaEmpresa?.os_tipos_restritos || false;
+                tData.sla_critica_horas = configDaEmpresa?.sla_critica_horas || 2;
+                tData.sla_alta_horas = configDaEmpresa?.sla_alta_horas || 6;
+                tData.sla_media_horas = configDaEmpresa?.sla_media_horas || 24;
+                tData.sla_baixa_horas = configDaEmpresa?.sla_baixa_horas || 48;
+
                 setTenant(tData);
                 
                 if(tData.status_assinatura === 'bloqueado') {
                     alert('Assinatura Bloqueada. Contate o suporte Atlasum.');
                 }
-            } else if (configGeral) {
+            } else if (configDaEmpresa) {
+                const logoEncontrada = configDaEmpresa.logo_url || configDaEmpresa.logotipo_url;
                 setTenant({
                     id: 1,
-                    nome_fantasia: configGeral.nome_fantasia || 'Atlasum',
-                    logo_url: configGeral.logo_url,
-                    cor_primaria: '#1e3a8a'
+                    nome_fantasia: configDaEmpresa.nome_fantasia || 'Atlasum',
+                    logo_url: logoEncontrada ? `${logoEncontrada}?v=${new Date().getTime()}` : null,
+                    cor_primaria: '#1e3a8a',
+                    os_tipos_restrito: configDaEmpresa.os_tipos_restritos || false,
+                    sla_critica_horas: configDaEmpresa.sla_critica_horas || 2,
+                    sla_alta_horas: configDaEmpresa.sla_alta_horas || 6,
+                    sla_media_horas: configDaEmpresa.sla_media_horas || 24,
+                    sla_baixa_horas: configDaEmpresa.sla_baixa_horas || 48
                 });
             }
             setLoadingTenant(false);
@@ -407,7 +438,9 @@ export default function App() {
         initTenant();
     }, []);
 
-    if (isPublicView) return <ErrorBoundary><OSPublicView /></ErrorBoundary>;
+    // 🚀 INTERCEPTANDO AS ROTAS PÚBLICAS
+    if (isPublicViewOS) return <ErrorBoundary><OSPublicView /></ErrorBoundary>;
+    if (isPublicAbertura) return <ErrorBoundary><AberturaChamadoPublico /></ErrorBoundary>;
 
     if (loadingTenant) {
         return <div className="h-screen flex items-center justify-center bg-slate-900 text-white"><Loader2 className="animate-spin text-blue-500" size={64}/></div>

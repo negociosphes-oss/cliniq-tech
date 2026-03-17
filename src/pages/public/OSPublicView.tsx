@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
-  Download, CheckCircle2, Calendar, Wrench, ShieldCheck, 
-  Activity, FileText, Clock, Camera, MapPin, User, Building2
+  Download, CheckCircle2, Wrench, ShieldCheck, 
+  FileText, Camera, Building2, AlertTriangle
 } from 'lucide-react';
 
 export function OSPublicView() {
@@ -12,10 +12,10 @@ export function OSPublicView() {
 
   const osUuid = window.location.pathname.split('/').filter(Boolean).pop();
 
-  const getImageUrl = (path: any, folder: 'evidências' | 'configuração' = 'evidências') => {
+  const getImageUrl = (path: any, folder: 'evidências' | 'configuração' | 'logos' = 'evidências') => {
     if (!path || typeof path !== 'string' || path.trim() === '') return null;
-    if (path.startsWith('http')) return path;
-    const BUCKET = 'os-imagens';
+    if (path.startsWith('http')) return path; 
+    const BUCKET = folder === 'logos' || folder === 'configuração' ? 'app-assets' : 'os-imagens';
     return `https://dnimxqxgtvltgvrrabur.supabase.co/storage/v1/object/public/${BUCKET}/${folder}/${path}`;
   };
 
@@ -27,29 +27,38 @@ export function OSPublicView() {
     if (!osUuid) return setLoading(false);
 
     try {
-      // MAGIA AQUI: Apontando para a tabela correta 'configuracoes_empresa'
-      const { data: config } = await supabase
-        .from('configuracoes_empresa')
-        .select('*')
-        .order('id', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (config) setSystemConfig(config);
-
+      // 1. PRIMEIRO: Busca a OS para saber de qual Tenant (Empresa) ela é!
       const { data: osData } = await supabase
         .from('ordens_servico')
         .select(`
           *,
           equipamentos:equipamento_id (
             *,
-            clientes:cliente_id (*)
+            clientes:cliente_id (*),
+            tecnologia:dict_tecnologias (nome)
           )
         `)
         .eq('id_publico', osUuid)
         .maybeSingle();
 
-      if (osData) setOs(osData);
+      if (osData) {
+        setOs(osData);
+
+        // 2. SEGUNDO: Busca a configuração exata do dono da O.S. (Blindagem Multi-tenant)
+        const tenantId = osData.tenant_id || 1;
+        const { data: config } = await supabase
+          .from('configuracoes_empresa')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        if (config) setSystemConfig(config);
+
+        // 3. AUTO-PRINT: Se veio pelo botão da impressora, já puxa a tela de impressão
+        if (window.location.search.includes('print=true')) {
+            setTimeout(() => window.print(), 800);
+        }
+      }
 
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
@@ -62,21 +71,31 @@ export function OSPublicView() {
     <div className="h-screen flex items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-4">
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Autenticando Documento</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Construindo Documento</span>
       </div>
     </div>
   );
 
   if (!os) return (
-    <div className="h-screen flex items-center justify-center font-black text-slate-400 uppercase tracking-widest p-8 text-center">
-       Ordem de Serviço não encontrada ou link expirado.
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-50 font-sans text-slate-400 p-8 text-center">
+       <AlertTriangle size={64} className="mb-4 opacity-50" />
+       <h2 className="text-xl font-black uppercase tracking-widest text-slate-600">Documento Indisponível</h2>
+       <p className="mt-2 font-medium">A Ordem de Serviço não foi encontrada ou o link de acesso expirou.</p>
     </div>
   );
 
-  // LENDO A COLUNA CORRETA: nome_fantasia
-  const empresaNome = systemConfig?.nome_fantasia || 'ATLAS SYSTEM MEDICAL';
-  const empresaCnpj = systemConfig?.cnpj || '07.385.954/0001-98';
-  const clienteNome = os.equipamentos?.clientes?.nome_fantasia || os.equipamentos?.clientes?.nome || os.cliente_nome || 'Unidade Hospitalar';
+  // 🚀 LÓGICA DE DADOS CORRIGIDA E BLINDADA
+  const empresaNome = systemConfig?.nome_fantasia || systemConfig?.nome_empresa || 'ATLAS SYSTEM MEDICAL';
+  const empresaCnpj = systemConfig?.cnpj || 'Não informado';
+  const clienteNome = os.equipamentos?.clientes?.nome_fantasia || os.equipamentos?.clientes?.razao_social || os.cliente_nome || 'Unidade Hospitalar';
+  const clienteDoc = os.equipamentos?.clientes?.cnpj_cpf || 'Não informado';
+  
+  // Nomenclatura Híbrida do Equipamento
+  const nomeEquipamento = os.equipamentos?.nome || os.equipamentos?.tecnologia?.nome || os.equipamento_nome || 'Equipamento Médico';
+
+  // 🚀 QUEBRA DE CACHE DA LOGO (Garante imagem atualizada)
+  const rawLogoUrl = systemConfig?.logo_url || systemConfig?.logotipo_url;
+  const finalLogoUrl = rawLogoUrl ? `${getImageUrl(rawLogoUrl, 'logos')}?v=${new Date().getTime()}` : null;
 
   let fotos: string[] = [];
   try {
@@ -89,68 +108,81 @@ export function OSPublicView() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7] font-sans text-slate-900">
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-black/5 p-4 flex justify-between items-center px-10 print:hidden">
+      
+      {/* BARRA SUPERIOR - MODO WEB */}
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-black/5 p-4 flex justify-between items-center px-6 md:px-10 print:hidden shadow-sm">
         <div className="flex items-center gap-3">
-           {systemConfig?.logotipo_url && getImageUrl(systemConfig.logotipo_url, 'configuração') ? (
-             <img src={getImageUrl(systemConfig.logotipo_url, 'configuração')!} className="h-7 w-auto" alt="Logo" />
+           {finalLogoUrl ? (
+             <img src={finalLogoUrl} className="h-8 w-auto object-contain" alt="Logo Empresa" />
            ) : (
-             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xs">A</div>
+             <div className="w-8 h-8 bg-blue-800 rounded-lg flex items-center justify-center text-white font-black text-xs">A</div>
            )}
-           <span className="font-black text-[10px] uppercase tracking-tighter italic">{empresaNome}</span>
+           <span className="font-black text-[10px] uppercase tracking-tighter italic text-slate-600 hidden sm:block">{empresaNome}</span>
         </div>
-        <button onClick={() => window.print()} className="bg-blue-600 text-white px-6 py-2 rounded-full text-[10px] font-black shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2">
-          <Download size={14} /> SALVAR PDF
+        <button onClick={() => window.print()} className="bg-blue-700 text-white px-6 py-2.5 rounded-full text-xs font-black shadow-lg hover:bg-blue-800 transition-all flex items-center gap-2 active:scale-95">
+          <Download size={16} /> <span className="hidden sm:inline">BAIXAR PDF</span>
         </button>
       </nav>
 
-      <main className="max-w-2xl mx-auto p-6 py-12 space-y-6 print:p-0">
-        <div className="print:hidden space-y-6">
+      {/* CONTEÚDO - MODO WEB */}
+      <main className="max-w-3xl mx-auto p-4 md:p-6 py-8 md:py-12 space-y-6 print:p-0 print:m-0 print:max-w-none">
+        
+        <div className="print:hidden space-y-8 animate-fadeIn">
            <header className="text-center pb-6">
-              <div className="w-20 h-20 bg-emerald-500 text-white rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl mb-6">
-                 <CheckCircle2 size={40} />
+              <div className={`w-20 h-20 text-white rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl mb-6 ${os.status === 'Concluída' ? 'bg-emerald-500' : 'bg-blue-500'}`}>
+                 {os.status === 'Concluída' ? <CheckCircle2 size={40} /> : <Wrench size={40} />}
               </div>
-              <h1 className="text-3xl font-black tracking-tight">Atendimento Finalizado</h1>
-              <p className="text-slate-400 font-bold text-[10px] uppercase mt-1">OS #{os.id} | {new Date(os.created_at).toLocaleDateString()}</p>
+              <h1 className="text-3xl font-black tracking-tight">{os.status === 'Concluída' ? 'Atendimento Finalizado' : 'Em Atendimento'}</h1>
+              <p className="text-slate-400 font-bold text-xs uppercase mt-2 tracking-widest">OS #{os.id} | {new Date(os.created_at).toLocaleDateString('pt-BR')}</p>
            </header>
 
-           <section className="bg-white border border-white/20 rounded-[3rem] p-10 shadow-2xl space-y-10">
+           <section className="bg-white border border-slate-200 rounded-[2rem] p-6 md:p-10 shadow-xl space-y-8">
               <div className="flex items-center gap-6">
-                <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><Wrench size={28}/></div>
+                <div className="w-14 h-14 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center shrink-0"><Wrench size={28}/></div>
                 <div>
-                   <p className="text-[9px] font-black uppercase text-slate-400 mb-0.5">Equipamento</p>
-                   <h2 className="text-xl font-black">{os.equipamento_nome || 'Equipamento'}</h2>
-                   <p className="text-xs font-bold text-blue-600 uppercase">TAG: {os.equipamentos?.tag || 'N/A'}</p>
+                   <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Equipamento</p>
+                   <h2 className="text-xl font-black text-slate-800">{nomeEquipamento}</h2>
+                   <p className="text-xs font-bold text-blue-700 mt-1">TAG: {os.equipamentos?.tag || 'N/A'} {os.equipamentos?.n_serie ? `| S/N: ${os.equipamentos.n_serie}` : ''}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-slate-100">
                  <div>
-                    <p className="text-[9px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1"><Building2 size={12}/> Unidade</p>
-                    <p className="font-bold text-sm uppercase">{clienteNome}</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1 flex items-center gap-1"><Building2 size={14}/> Cliente / Unidade</p>
+                    <p className="font-bold text-sm text-slate-800 uppercase">{clienteNome}</p>
+                    <p className="text-xs text-slate-500 mt-1">Setor: {os.solicitante_setor || os.equipamentos?.setor || 'Não informado'}</p>
                  </div>
                  <div>
-                    <p className="text-[9px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1"><ShieldCheck size={12}/> Executor</p>
-                    <p className="font-bold text-sm uppercase">{os.tecnico_nome || 'Engenharia Clínica'}</p>
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1 flex items-center gap-1"><ShieldCheck size={14}/> Técnico Responsável</p>
+                    <p className="font-bold text-sm text-slate-800 uppercase">{os.tecnico_nome || 'Engenharia Clínica'}</p>
+                    <p className="text-xs text-slate-500 mt-1">Tipo: {os.tipo || 'Corretiva'}</p>
                  </div>
               </div>
 
-              <div className="pt-8 border-t border-slate-100">
-                  <p className="text-[9px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><FileText size={14}/> Relato Técnico</p>
-                  <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 text-slate-700 italic font-medium">
-                     "{os.solucao_aplicada || 'Manutenção realizada.'}"
+              <div className="pt-6 border-t border-slate-100">
+                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><FileText size={14}/> Defeito Relatado</p>
+                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 font-medium text-sm">
+                      "{os.defeito_relatado || os.descricao_problema || 'Manutenção programada.'}"
+                  </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100">
+                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><CheckCircle2 size={14}/> Laudo / Solução Aplicada</p>
+                  <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 text-slate-800 font-medium text-sm whitespace-pre-wrap">
+                      {os.solucao_aplicada || os.laudo_tecnico || 'Atendimento em andamento. Laudo não emitido.'}
                   </div>
               </div>
 
               {fotosValidas.length > 0 && (
-                 <div className="pt-8 border-t border-slate-100">
-                    <p className="text-[9px] font-black uppercase text-slate-400 mb-5 flex items-center gap-1"><Camera size={14}/> Fotos do Atendimento</p>
-                    <div className="grid grid-cols-2 gap-4">
+                 <div className="pt-6 border-t border-slate-100">
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-4 flex items-center gap-1"><Camera size={14}/> Fotos / Evidências</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                        {fotosValidas.map((url, i) => {
                           const imgSrc = getImageUrl(url);
                           return imgSrc ? (
-                            <div key={i} className="aspect-video rounded-3xl overflow-hidden shadow-md bg-slate-100">
+                            <a href={imgSrc} target="_blank" rel="noreferrer" key={i} className="aspect-square rounded-2xl overflow-hidden shadow-sm border border-slate-200 hover:opacity-80 transition-opacity">
                                <img src={imgSrc} className="w-full h-full object-cover" alt="Evidência" />
-                            </div>
+                            </a>
                           ) : null;
                        })}
                     </div>
@@ -159,79 +191,129 @@ export function OSPublicView() {
            </section>
         </div>
 
-        {/* LAYOUT DE IMPRESSÃO A4 */}
-        <div className="hidden print:block bg-white text-black p-[15mm] w-full max-w-[210mm] mx-auto text-[10px] leading-tight border border-black/10">
-            <div className="border-b-4 border-black pb-4 mb-6 flex justify-between items-center">
-               <div className="flex items-center gap-4">
-                  {systemConfig?.logotipo_url && getImageUrl(systemConfig.logotipo_url, 'configuração') && (
-                     <img src={getImageUrl(systemConfig.logotipo_url, 'configuração')!} className="h-14 w-auto" alt="" />
-                  )}
-                  <div>
-                     <h1 className="text-2xl font-black uppercase tracking-tighter">{empresaNome}</h1>
-                     <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">CNPJ: {empresaCnpj}</p>
-                  </div>
-               </div>
-               <div className="text-right">
-                  <span className="bg-black text-white px-3 py-1 font-black uppercase text-[9px] mb-2 inline-block">Relatório Técnico</span>
-                  <p className="font-black text-base uppercase">OS #{os.id}</p>
-                  <p className="font-bold text-slate-600 text-[9px]">{new Date().toLocaleDateString('pt-BR')}</p>
-               </div>
+        {/* ========================================================= */}
+        {/* 🚀 LAYOUT DE IMPRESSÃO "PDF AZUL" PADRÃO ENTERPRISE */}
+        {/* ========================================================= */}
+        <div className="hidden print:block bg-white text-slate-900 w-full max-w-[210mm] mx-auto text-[11px] leading-tight">
+            
+            {/* CABEÇALHO DA O.S. */}
+            <div className="border-b-4 border-blue-900 pb-4 mb-6 flex justify-between items-end">
+                <div className="w-1/2">
+                   {finalLogoUrl ? (
+                      <img src={finalLogoUrl} className="max-h-16 max-w-[220px] object-contain" alt="Logo" />
+                   ) : (
+                      <h1 className="text-2xl font-black uppercase text-blue-900 m-0">{empresaNome}</h1>
+                   )}
+                </div>
+                <div className="w-1/2 text-right">
+                   <h1 className="m-0 text-[22px] font-black text-slate-800 uppercase tracking-tight">Ordem de Serviço</h1>
+                   <p className="m-0 mt-1 text-lg font-black text-rose-600 tracking-widest">Nº {String(os.id).padStart(5, '0')}</p>
+                   <p className="m-0 mt-1 text-[10px] font-bold text-slate-500">Status: <span className="uppercase text-slate-800">{os.status || 'Aberta'}</span></p>
+                </div>
             </div>
 
-            <div className="space-y-4">
-               <div className="border border-black">
-                  <div className="bg-slate-200 border-b border-black p-1 font-black uppercase text-[8px]">1. Identificação da Unidade e Atendimento</div>
-                  <table className="w-full">
-                     <tbody>
+            {/* BLOCO 1: CLIENTE E DATAS */}
+            <div className="mb-5">
+                <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">1. DADOS DO CLIENTE E ATENDIMENTO</div>
+                <table className="w-full border-collapse text-[10px]">
+                    <tbody>
                         <tr>
-                           <td className="border-r border-b border-black p-2 font-bold bg-slate-50 w-[20%] uppercase">Unidade:</td>
-                           <td className="border-r border-b border-black p-2 w-[30%] uppercase font-semibold">{clienteNome}</td>
-                           <td className="border-r border-b border-black p-2 font-bold bg-slate-50 w-[20%] uppercase">Setor:</td>
-                           <td className="border-b border-black p-2 w-[30%] uppercase font-semibold">{os.equipamentos?.setor || 'UTI'}</td>
+                            <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">Cliente:</td>
+                            <td className="border border-slate-300 p-2 w-[55%] font-semibold uppercase">{clienteNome}</td>
+                            <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">CNPJ:</td>
+                            <td className="border border-slate-300 p-2 w-[15%] font-semibold">{clienteDoc}</td>
                         </tr>
                         <tr>
-                           <td className="border-r border-black p-2 font-bold bg-slate-50 uppercase">Equipamento:</td>
-                           <td className="border-r border-black p-2 uppercase font-black">{os.equipamento_nome || 'N/A'}</td>
-                           <td className="border-r border-black p-2 font-bold bg-slate-50 uppercase">Tag / Modelo:</td>
-                           <td className="p-2 font-black uppercase">{os.equipamentos?.tag} | {os.equipamentos?.modelo}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Solicitante:</td>
+                            <td className="border border-slate-300 p-2 font-semibold uppercase">{os.solicitante_nome || '-'}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Setor/Ala:</td>
+                            <td className="border border-slate-300 p-2 font-semibold uppercase">{os.solicitante_setor || os.equipamentos?.setor || '-'}</td>
                         </tr>
-                     </tbody>
-                  </table>
-               </div>
+                        <tr>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Abertura:</td>
+                            <td className="border border-slate-300 p-2 font-semibold">{new Date(os.created_at).toLocaleDateString('pt-BR')} as {new Date(os.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Fechamento:</td>
+                            <td className="border border-slate-300 p-2 font-semibold">{os.data_fechamento ? new Date(os.data_fechamento).toLocaleDateString('pt-BR') : '-'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-               <div className="border border-black min-h-[120px]">
-                  <div className="bg-slate-200 border-b border-black p-1 font-black uppercase text-[8px]">2. Descritivo Técnico e Solução</div>
-                  <div className="p-3 text-[11px] leading-relaxed font-medium italic">
-                    {os.solucao_aplicada || 'N/A'}
-                  </div>
-               </div>
+            {/* BLOCO 2: EQUIPAMENTO */}
+            <div className="mb-5">
+                <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">2. DADOS DO EQUIPAMENTO</div>
+                <table className="w-full border-collapse text-[10px]">
+                    <tbody>
+                        <tr>
+                            <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">Equipamento:</td>
+                            <td className="border border-slate-300 p-2 w-[35%] font-bold uppercase text-blue-900">{nomeEquipamento}</td>
+                            <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">Fabricante:</td>
+                            <td className="border border-slate-300 p-2 w-[35%] font-semibold uppercase">{os.equipamentos?.fabricante || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Modelo:</td>
+                            <td className="border border-slate-300 p-2 font-semibold uppercase">{os.equipamentos?.modelo || '-'}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Série (S/N):</td>
+                            <td className="border border-slate-300 p-2 font-semibold">{os.equipamentos?.n_serie || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">TAG/Patrimônio:</td>
+                            <td className="border border-slate-300 p-2 font-black text-slate-800">{os.equipamentos?.tag || '-'}</td>
+                            <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Tipo de O.S.:</td>
+                            <td className="border border-slate-300 p-2 font-black uppercase">{os.tipo || 'Corretiva'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
-               {fotosValidas.length > 0 && (
-                  <div className="border border-black" style={{ pageBreakInside: 'avoid' }}>
-                     <div className="bg-slate-200 border-b border-black p-1 font-black uppercase text-[8px]">3. Evidências Fotográficas</div>
-                     <div className="p-2 grid grid-cols-2 gap-4">
-                        {fotosValidas.map((url, i) => {
-                           const imgSrc = getImageUrl(url);
-                           return imgSrc ? (
-                             <div key={i} className="border border-slate-200 p-1 flex items-center justify-center bg-slate-50">
-                                <img src={imgSrc} className="w-full h-44 object-contain" alt="" />
-                             </div>
-                           ) : null;
+            {/* BLOCO 3: PROBLEMA E SOLUÇÃO */}
+            <div className="mb-5">
+                <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">3. DETALHES TÉCNICOS DA INTERVENÇÃO</div>
+                <table className="w-full border-collapse text-[10px]">
+                    <tbody>
+                        <tr>
+                            <td className="border border-slate-300 p-3 bg-slate-50 font-bold uppercase w-[25%] align-top">Defeito Relatado / Motivo:</td>
+                            <td className="border border-slate-300 p-3 w-[75%] italic text-slate-700 whitespace-pre-wrap">{os.defeito_relatado || os.descricao_problema || 'Sem relato inicial.'}</td>
+                        </tr>
+                        <tr>
+                            <td className="border border-slate-300 p-3 bg-slate-50 font-bold uppercase w-[25%] align-top">Laudo Técnico / Solução:</td>
+                            <td className="border border-slate-300 p-3 w-[75%] font-medium text-slate-900 whitespace-pre-wrap min-h-[80px]">{os.solucao_aplicada || os.laudo_tecnico || 'Atendimento em andamento / Sem laudo.'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            {/* BLOCO 4: FOTOS SE HOUVER (Evita quebrar no meio da folha) */}
+            {fotosValidas.length > 0 && (
+                <div className="mb-5" style={{ pageBreakInside: 'avoid' }}>
+                    <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-2">4. EVIDÊNCIAS FOTOGRÁFICAS</div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {fotosValidas.slice(0, 3).map((url, i) => { // Limita a 3 fotos para não estourar folha A4 facilmente
+                            const imgSrc = getImageUrl(url);
+                            return imgSrc ? (
+                                <div key={i} className="border border-slate-300 p-1 flex items-center justify-center h-40">
+                                    <img src={imgSrc} className="max-w-full max-h-full object-contain" alt="" />
+                                </div>
+                            ) : null;
                         })}
-                     </div>
-                  </div>
-               )}
+                    </div>
+                </div>
+            )}
+
+            {/* BLOCO 5: ASSINATURAS (Preso ao final) */}
+            <div className="mt-16 flex justify-between gap-10 px-8" style={{ pageBreakInside: 'avoid' }}>
+                <div className="w-[45%] text-center border-t border-black pt-2">
+                    <p className="font-black text-[10px] uppercase text-slate-800">Técnico Responsável</p>
+                    <p className="font-bold text-[9px] text-slate-600 uppercase mt-1">{os.tecnico_nome || 'Equipe Técnica'}</p>
+                </div>
+                <div className="w-[45%] text-center border-t border-black pt-2">
+                    <p className="font-black text-[10px] uppercase text-slate-800">Aceite do Solicitante / Cliente</p>
+                    <p className="font-bold text-[9px] text-slate-500 mt-1">Assinatura / Carimbo</p>
+                </div>
             </div>
 
-            <div className="mt-20 flex justify-around gap-12" style={{ pageBreakInside: 'avoid' }}>
-                <div className="flex-1 border-t-2 border-black text-center pt-3">
-                    <p className="font-black text-[8px] uppercase tracking-tighter">Responsável Técnico</p>
-                    <p className="font-bold text-[10px] uppercase mt-1">{os.tecnico_nome || 'Engenharia Clínica'}</p>
-                </div>
-                <div className="flex-1 border-t-2 border-black text-center pt-3">
-                    <p className="font-black text-[8px] uppercase tracking-tighter">Aceite do Cliente</p>
-                    <p className="font-bold text-[10px] uppercase mt-1">{os.solicitante_nome || 'Responsável'}</p>
-                </div>
+            <div className="mt-8 text-center text-[8px] text-slate-400 font-bold border-t border-slate-200 pt-4" style={{ pageBreakInside: 'avoid' }}>
+                DOCUMENTO GERADO ELETRONICAMENTE POR {empresaNome.toUpperCase()} ATRAVÉS DO SISTEMA ATLASUM.
             </div>
         </div>
       </main>

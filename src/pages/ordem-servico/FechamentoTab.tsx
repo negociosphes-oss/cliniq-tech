@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, FileText, PenTool, ShieldCheck, Activity, Key, Search, Clock, Mail, Printer, Loader2 } from 'lucide-react';
+import { CheckCircle, FileText, PenTool, ShieldCheck, Activity, Key, Search, Clock, Mail, Printer, Loader2, MessageCircle, Copy } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
 interface FechamentoTabProps {
@@ -20,14 +20,11 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
   const temDiagnostico = !!osForm.falha_constatada && osForm.falha_constatada.trim().length > 5;
   const temSolucao = !!osForm.solucao_aplicada && osForm.solucao_aplicada.trim().length > 5;
   const relatorioOk = temDiagnostico && temSolucao;
-  
   const podeFinalizar = temApontamento && relatorioOk;
 
-  // 🚀 O NOVO MOTOR DE SALVAMENTO E ENCERRAMENTO
   const handleFinalizarCustom = async () => {
       setLoading(true);
       try {
-          // 1. Salva os textos e muda o status no banco de dados de uma vez só
           const { error } = await supabase.from('ordens_servico').update({
               falha_constatada: osForm.falha_constatada,
               causa_raiz: osForm.causa_raiz,
@@ -37,9 +34,8 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
           }).eq('id', osForm.id);
 
           if (error) throw error;
-
           if (showToast) showToast('O.S. Finalizada com sucesso!', 'success');
-          onFinalize(); // Avisa a página principal para atualizar as abas
+          onFinalize(); 
       } catch (e) {
           if (showToast) showToast('Erro ao salvar no banco de dados.', 'error');
       } finally {
@@ -47,17 +43,37 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
       }
   };
 
-  const handleSendEmail = () => {
-     const email = osForm.cliente?.email_contato || osForm.cliente?.email || '';
-     if (!email && showToast) {
-         showToast('Atenção: E-mail do cliente não está preenchido no cadastro.', 'info');
-     }
+  const getLinkPublico = () => `${window.location.origin}/view/os/${osForm.id_publico || osForm.id}`;
+  const getEquipamentoNome = () => osForm.equipamento?.nome || osForm.equipamento?.tecnologia?.nome || osForm.equipamento_nome || 'Equipamento';
+
+  const getMensagemBase = () => {
+     const link = getLinkPublico();
+     const equipamento = getEquipamentoNome();
+     return `Olá ${osForm.solicitante_nome || 'Cliente'},\n\nA Ordem de Serviço #${osForm.id} referente ao equipamento ${equipamento} (TAG: ${osForm.equipamento?.tag || 'N/A'}) foi concluída com sucesso.\n\nPara acessar o relatório técnico e laudos atrelados, clique no link seguro abaixo:\n\n🔗 ${link}\n\nAtenciosamente,\nEquipe Técnica`;
+  };
+
+  const handleShareWhatsApp = () => {
+      const texto = getMensagemBase();
+      const telefoneBruto = osForm.solicitante_telefone || osForm.cliente?.telefone || '';
+      const telefone = telefoneBruto.replace(/\D/g, ''); 
+      const url = telefone ? `https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`;
+      window.open(url, '_blank');
+  };
+
+  // 🚀 NOVO: ABRE DIRETO NO GMAIL WEB
+  const handleShareGmail = () => {
+     const email = osForm.solicitante_email || osForm.cliente?.email_contato || osForm.cliente?.email || '';
+     const assunto = `Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`;
+     const corpo = getMensagemBase();
      
-     const linkPrivado = `${window.location.origin}/view/os/${osForm.id_publico}`;
-     const assunto = encodeURIComponent(`Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`);
-     const corpo = encodeURIComponent(`Olá ${osForm.solicitante_nome || 'Cliente'},\n\nInformamos que a sua Ordem de Serviço #${osForm.id} referente ao equipamento TAG: ${osForm.equipamento?.tag || ''} foi concluída com sucesso.\n\nPara visualizar o relatório técnico digital completo e baixar o seu certificado, acesse o link seguro abaixo:\n\n🔗 Acessar Relatório: ${linkPrivado}\n\nAtenciosamente,\nEquipe Técnica`);
-     
-     window.open(`mailto:${email}?subject=${assunto}&body=${corpo}`);
+     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+     window.open(gmailUrl, '_blank');
+  };
+
+  // 🚀 NOVO: COPIA TUDO PRO CTRL+V
+  const handleCopyText = () => {
+      navigator.clipboard.writeText(getMensagemBase());
+      if (showToast) showToast('Texto copiado! Só colar no e-mail ou onde desejar.', 'success');
   };
 
   return (
@@ -77,7 +93,7 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
             <textarea 
                disabled={isReadOnly}
                className={`input-theme w-full p-4 rounded-xl font-medium text-sm h-28 resize-none focus:ring-2 focus:ring-blue-500/20 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-               placeholder="Descreva tecnicamente a falha encontrada. Ex: Falha no bloco de válvulas confirmada nos testes de vazamento."
+               placeholder="Descreva tecnicamente a falha encontrada."
                value={osForm.falha_constatada || ''}
                onChange={e => setOsForm({...osForm, falha_constatada: e.target.value})}
             />
@@ -92,7 +108,7 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
                 <textarea 
                    disabled={isReadOnly}
                    className={`input-theme w-full p-4 rounded-xl font-medium text-sm h-36 resize-none focus:ring-2 focus:ring-amber-500/20 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-                   placeholder="Identifique a origem do problema. Ex: Desgaste natural, oscilação de rede, mau uso operacional..."
+                   placeholder="Identifique a origem do problema."
                    value={osForm.causa_raiz || ''}
                    onChange={e => setOsForm({...osForm, causa_raiz: e.target.value})}
                 />
@@ -106,7 +122,7 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
                 <textarea 
                    disabled={isReadOnly}
                    className={`input-theme w-full p-4 rounded-xl font-medium text-sm h-36 resize-none focus:ring-2 focus:ring-emerald-500/20 ${isReadOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-                   placeholder="Descreva detalhadamente o serviço realizado. O que foi trocado? O que foi ajustado?"
+                   placeholder="Descreva detalhadamente o serviço realizado."
                    value={osForm.solucao_aplicada || ''}
                    onChange={e => setOsForm({...osForm, solucao_aplicada: e.target.value})}
                 />
@@ -118,51 +134,32 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
          <div className="mt-8 bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800/50 p-8 rounded-[32px] text-center shadow-sm animate-fadeIn">
             <CheckCircle size={48} className="text-emerald-500 mx-auto mb-4"/>
             <h3 className="text-2xl font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-widest">Atendimento Encerrado</h3>
-            <p className="text-emerald-700 dark:text-emerald-500 font-medium mt-2 mb-8">Esta Ordem de Serviço foi concluída e selada com sucesso. Escolha uma ação abaixo:</p>
+            <p className="text-emerald-700 dark:text-emerald-500 font-medium mt-2 mb-8">Esta Ordem de Serviço foi concluída. Compartilhe o laudo final com o cliente:</p>
             
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
-               <button onClick={handleSendEmail} className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95">
-                  <Mail size={20}/> ENVIAR POR E-MAIL
+            <div className="flex flex-wrap justify-center gap-3">
+               <button onClick={handleShareWhatsApp} className="px-5 py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
+                  <MessageCircle size={18}/> WHATSAPP
                </button>
-               <button onClick={onPrint} className="px-8 py-4 bg-slate-800 hover:bg-slate-900 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 text-white rounded-xl font-black shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95">
-                  <Printer size={20}/> BAIXAR PDF / IMPRIMIR
+               
+               {/* 🚀 BOTÃO NOVO DO GMAIL */}
+               <button onClick={handleShareGmail} className="px-5 py-3 bg-[#EA4335] hover:bg-[#d6382b] text-white rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
+                  <Mail size={18}/> GMAIL (WEB)
+               </button>
+
+               {/* 🚀 BOTÃO PLANO B (COPIAR) */}
+               <button onClick={handleCopyText} className="px-5 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
+                  <Copy size={18}/> COPIAR TEXTO
+               </button>
+               
+               <button onClick={onPrint} className="px-5 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
+                  <Printer size={18}/> IMPRIMIR FÍSICO
                </button>
             </div>
          </div>
       ) : (
          <>
-            <div className="bg-theme-page/50 border border-theme p-8 rounded-[32px] mt-8 shadow-inner">
-              <h3 className="text-xs font-black uppercase text-theme-muted tracking-widest mb-6">Auditoria Interna de Qualidade</h3>
-              <div className="grid md:grid-cols-3 gap-4">
-                 
-                 <div className={`p-4 rounded-2xl border flex items-start gap-3 transition-all ${temApontamento ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20' : 'bg-theme-card border-theme text-theme-muted'}`}>
-                    <Clock size={20} className={temApontamento ? 'text-emerald-500' : 'opacity-40'}/>
-                    <div>
-                       <p className="text-xs font-black uppercase mb-1">Mão de Obra</p>
-                       <p className="text-[10px] leading-tight font-medium">{temApontamento ? 'Horas e insumos registrados.' : 'Nenhum apontamento feito.'}</p>
-                    </div>
-                 </div>
-
-                 <div className={`p-4 rounded-2xl border flex items-start gap-3 transition-all ${relatorioOk ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20' : 'bg-theme-card border-theme text-theme-muted'}`}>
-                    <FileText size={20} className={relatorioOk ? 'text-emerald-500' : 'opacity-40'}/>
-                    <div>
-                       <p className="text-xs font-black uppercase mb-1">Relatório Técnico</p>
-                       <p className="text-[10px] leading-tight font-medium">{relatorioOk ? 'Diagnóstico e solução preenchidos.' : 'Preencha os campos obrigatórios (*).'}</p>
-                    </div>
-                 </div>
-
-                 <div className="p-4 rounded-2xl border bg-theme-card border-theme text-theme-muted flex items-start gap-3">
-                    <PenTool size={20} className="opacity-40"/>
-                    <div>
-                       <p className="text-xs font-black uppercase mb-1">Assinaturas e Aceite</p>
-                       <p className="text-[10px] leading-tight font-medium">Será validado automaticamente ao clicar em Encerrar.</p>
-                    </div>
-                 </div>
-
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center justify-center pt-4">
+            {/* O Resto das validações para encerrar a OS continua igualzinho... */}
+            <div className="flex flex-col items-center justify-center pt-4 mt-8">
                {podeFinalizar ? (
                   <button 
                      onClick={handleFinalizarCustom} 
@@ -173,10 +170,10 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
                      ENCERRAR E SELAR ORDEM DE SERVIÇO
                   </button>
                ) : (
-                  <div className="text-center p-6 bg-theme-card rounded-3xl border border-rose-200 dark:border-rose-900/30 w-full max-w-md flex flex-col items-center shadow-sm">
+                  <div className="text-center p-6 bg-theme-card rounded-3xl border border-rose-200 w-full max-w-md flex flex-col items-center">
                      <Key size={32} className="text-rose-500 mb-3 opacity-80"/>
                      <p className="font-black text-rose-600 uppercase tracking-widest text-sm">Encerramento Bloqueado</p>
-                     <p className="text-xs text-theme-muted font-medium mt-2">Você deve preencher o <strong>Diagnóstico</strong>, a <strong>Solução</strong> e registrar a <strong>Mão de Obra</strong> para liberar o encerramento.</p>
+                     <p className="text-xs text-theme-muted font-medium mt-2">Você deve preencher o <strong>Diagnóstico</strong> e a <strong>Solução</strong> para liberar o encerramento.</p>
                   </div>
                )}
             </div>

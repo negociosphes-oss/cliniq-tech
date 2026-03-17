@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Plus, Building2, MapPin, Edit3, Trash2, ChevronRight, FileText, Printer, Filter } from 'lucide-react';
+import { Search, Plus, Building2, MapPin, Edit3, Trash2, ChevronRight, FileText, Printer, Filter, Clock } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { ClienteHub } from './ClienteHub';
 import jsPDF from 'jspdf';
@@ -11,9 +11,8 @@ export function ClientesPage() {
   const [isHubOpen, setIsHubOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<any>(null);
   
-  const [tenantId, setTenantId] = useState<number>(1); // 🚀 ESTADO DO FAREJADOR
+  const [tenantId, setTenantId] = useState<number>(1); 
 
-  // 🚀 1. MOTOR FAREJADOR
   useEffect(() => {
     const initTenant = async () => {
       try {
@@ -40,12 +39,11 @@ export function ClientesPage() {
     initTenant();
   }, []);
 
-  // 🚀 2. FECHADURA DE BUSCA: Só vê os próprios clientes
   const fetchClientes = async (tId: number) => {
     const { data } = await supabase
       .from('clientes')
       .select('*')
-      .eq('tenant_id', tId) // Trava de Segurança
+      .eq('tenant_id', tId) 
       .order('nome_fantasia');
     setClientes(data || []);
   };
@@ -55,7 +53,6 @@ export function ClientesPage() {
     setIsHubOpen(true);
   };
 
-  // 🚀 3. FECHADURA DE EXCLUSÃO
   const handleDelete = async (id: number) => {
     if(!confirm('ATENÇÃO: Excluir o cliente apagará também Contratos e Dados Bancários. Continuar?')) return;
     try {
@@ -63,7 +60,7 @@ export function ClientesPage() {
           .from('clientes')
           .delete()
           .eq('id', id)
-          .eq('tenant_id', tenantId); // Trava Hacker-Proof
+          .eq('tenant_id', tenantId); 
           
         if (error) throw error;
         fetchClientes(tenantId);
@@ -96,7 +93,7 @@ export function ClientesPage() {
               <span className="p-3 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200"><Building2 size={24}/></span>
               Gestão de Clientes
             </h2>
-            <p className="text-slate-500 font-medium mt-2 ml-1">Gerencie contratos, financeiro e unidades.</p>
+            <p className="text-slate-500 font-medium mt-2 ml-1">Gerencie contratos, SLA, financeiro e unidades.</p>
         </div>
         <div className="flex gap-3">
             <button onClick={handleReport} className="h-10 px-4 bg-white border border-slate-300 text-slate-700 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-50 transition shadow-sm">
@@ -137,36 +134,48 @@ export function ClientesPage() {
                 </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-                {filtered.map(c => (
-                    <tr key={c.id} className="hover:bg-blue-50/40 transition-colors group">
-                        <td className="p-4 border-r border-slate-100">
-                            <div className="font-bold text-slate-800 text-base">{c.nome_fantasia}</div>
-                            <div className="text-xs text-slate-500 font-medium mt-0.5">{c.razao_social}</div>
-                        </td>
-                        <td className="p-4 border-r border-slate-100">
-                            <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded border border-slate-200">
-                                {c.doc_id || 'Não Informado'}
-                            </span>
-                        </td>
-                        <td className="p-4 border-r border-slate-100 text-slate-600 flex items-center gap-2">
-                            <div className="p-1.5 bg-rose-50 text-rose-500 rounded"><MapPin size={14}/></div>
-                            <div>
-                                <div className="font-medium">{c.cidade || '-'}</div>
-                                <div className="text-[10px] text-slate-400">{c.estado || 'UF'}</div>
-                            </div>
-                        </td>
-                        <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => handleOpenHub(c)} className="h-8 px-3 bg-blue-50 text-blue-700 border border-blue-100 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-100 hover:border-blue-200 transition-all">
-                                    Abrir Ficha <ChevronRight size={14}/>
-                                </button>
-                                <button onClick={() => handleDelete(c.id)} className="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Excluir">
-                                    <Trash2 size={16}/>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                ))}
+                {filtered.map(c => {
+                    // 🚀 LÓGICA DO SELO VISUAL: Verifica se o cliente tem algum SLA preenchido!
+                    const hasCustomSLA = c.sla_critica_horas || c.sla_alta_horas || c.sla_media_horas || c.sla_baixa_horas;
+
+                    return (
+                        <tr key={c.id} className="hover:bg-blue-50/40 transition-colors group">
+                            <td className="p-4 border-r border-slate-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="font-bold text-slate-800 text-base">{c.nome_fantasia}</div>
+                                    {hasCustomSLA && (
+                                        <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-200 px-2 py-0.5 rounded font-black uppercase flex items-center gap-1" title="SLA Exclusivo via Contrato">
+                                            <Clock size={10} /> SLA Custom
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-xs text-slate-500 font-medium mt-0.5">{c.razao_social}</div>
+                            </td>
+                            <td className="p-4 border-r border-slate-100">
+                                <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded border border-slate-200">
+                                    {c.doc_id || 'Não Informado'}
+                                </span>
+                            </td>
+                            <td className="p-4 border-r border-slate-100 text-slate-600 flex items-center gap-2">
+                                <div className="p-1.5 bg-rose-50 text-rose-500 rounded"><MapPin size={14}/></div>
+                                <div>
+                                    <div className="font-medium">{c.cidade || '-'}</div>
+                                    <div className="text-[10px] text-slate-400">{c.estado || 'UF'}</div>
+                                </div>
+                            </td>
+                            <td className="p-4 text-right">
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={() => handleOpenHub(c)} className="h-8 px-3 bg-blue-50 text-blue-700 border border-blue-100 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-100 hover:border-blue-200 transition-all">
+                                        Abrir Ficha <ChevronRight size={14}/>
+                                    </button>
+                                    <button onClick={() => handleDelete(c.id)} className="h-8 w-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Excluir">
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    )
+                })}
                 {filtered.length === 0 && (
                     <tr><td colSpan={4} className="p-10 text-center text-slate-400">Nenhum cliente encontrado.</td></tr>
                 )}
@@ -181,7 +190,7 @@ export function ClientesPage() {
             onClose={() => setIsHubOpen(false)} 
             cliente={selectedCliente} 
             onUpdate={() => fetchClientes(tenantId)}
-            tenantId={tenantId} // 🚀 4. PASSANDO O INQUILINO PARA O FORMULÁRIO DE CLIENTE
+            tenantId={tenantId}
         />
       )}
     </div>
