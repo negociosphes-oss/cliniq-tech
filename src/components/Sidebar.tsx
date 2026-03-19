@@ -10,35 +10,22 @@ import { ATLAS_THEMES } from '../constants/themes';
 import { ThemeService } from '../services/ThemeService';
 
 interface SidebarProps {
-  view: string;
-  setView: (path: string) => void;
-  onLogout: () => void;
-  isCollapsed: boolean;
-  toggleSidebar: () => void;
-  themeColor: string;
-  setThemeColor: (color: string) => void;
-  config: Config;
-  user?: Usuario | null; 
-  isMobileOpen?: boolean;
-  setIsMobileOpen?: (isOpen: boolean) => void;
+  view: string; setView: (path: string) => void; onLogout: () => void; isCollapsed: boolean; toggleSidebar: () => void;
+  themeColor: string; setThemeColor: (color: string) => void; config: Config; user?: Usuario | null; 
+  isMobileOpen?: boolean; setIsMobileOpen?: (isOpen: boolean) => void;
 }
 
-export function Sidebar({ 
-  view, setView, onLogout, isCollapsed, toggleSidebar, 
-  themeColor, setThemeColor, config, user, isMobileOpen, setIsMobileOpen 
-}: SidebarProps) {
+export function Sidebar({ view, setView, onLogout, isCollapsed, toggleSidebar, themeColor, setThemeColor, config, user, isMobileOpen, setIsMobileOpen }: SidebarProps) {
   const [empresaConfig, setEmpresaConfig] = useState<any>(null);
   const [permissoesDinamicas, setPermissoesDinamicas] = useState<any[]>([]);
 
-  // 🚀 SILENCIADOR DO TYPESCRIPT APLICADO AQUI: (user as any)
-  const userRole = (user as any)?.nivel_acesso 
-    || (user?.email === 'admin@atlasum.com.br' || user?.nome === 'CEO / Admin' ? 'master' : 'usuario');
+  const userRole = (user as any)?.nivel_acesso || (user?.email === 'admin@atlasum.com.br' || user?.nome === 'CEO / Admin' ? 'master' : 'usuario');
   const normalizedRole = userRole.toLowerCase();
 
   useEffect(() => {
     const fetchConfig = async () => {
       if(config?.id) {
-          const { data } = await supabase.from('empresas_inquilinas').select('nome_fantasia, logo_url').eq('id', config.id).maybeSingle();
+          const { data } = await supabase.from('configuracoes_empresa').select('nome_fantasia, logo_url, nome_empresa').eq('tenant_id', config.id).maybeSingle();
           if (data) setEmpresaConfig(data);
       }
     };
@@ -48,20 +35,16 @@ export function Sidebar({
   useEffect(() => {
     const carregarPermissoes = async () => {
         if (!user || !config?.id || normalizedRole === 'master') return;
-
-        const { data, error } = await supabase
-            .from('tenant_permissoes')
-            .select('modulo_id, permitido')
-            .eq('tenant_id', config.id)
-            .eq('nivel_acesso', normalizedRole);
-        
+        const { data, error } = await supabase.from('tenant_permissoes').select('modulo_id, permitido').eq('tenant_id', config.id).eq('nivel_acesso', normalizedRole);
         if (!error && data) setPermissoesDinamicas(data);
     };
     carregarPermissoes();
   }, [user, config?.id, normalizedRole]);
 
-  const companyName = empresaConfig?.nome_fantasia || config?.nome_empresa || 'Atlasum';
+  // 🚀 FORÇA A BUSCA DA LOGO ATUALIZADA
+  const companyName = empresaConfig?.nome_fantasia || empresaConfig?.nome_empresa || config?.nome_empresa || 'Atlasum';
   const logoUrl = empresaConfig?.logo_url || config?.logo_url || null;
+  const isModoCEO = config?.id === 1 && normalizedRole === 'master';
 
   const handleThemeChange = (theme: any) => {
       setThemeColor(theme.primary);
@@ -73,7 +56,7 @@ export function Sidebar({
     { section: 'Métricas & Gestão', id: 'painel', label: 'Painel Geral', icon: LayoutDashboard },
     { id: 'indicadores', label: 'Indicadores (BI)', icon: PieChart },
     { section: 'Operação em Campo', id: 'novo-chamado', label: 'Novo Chamado', icon: Megaphone },
-    { id: 'central', label: 'Central (Triagem)', icon: Zap }, // 🚀 NOVO BOTÃO CENTRAL AQUI
+    { id: 'central', label: 'Central (Triagem)', icon: Zap },
     { id: 'ordens', label: 'Ordens de Serviço', icon: ClipboardList },
     { id: 'equipamentos', label: 'Ativos & Inventário', icon: Monitor },
     { section: 'Engenharia Clínica', id: 'cronograma', label: 'Plano Diretor', icon: Calendar },
@@ -91,12 +74,7 @@ export function Sidebar({
   ];
 
   const temAcesso = (moduloId: string) => {
-      if (moduloId === 'admin-geral') {
-          // Força a liberação absoluta se for o e-mail do dono da plataforma
-          if (user?.email === 'admin@atlasum.com.br') return true;
-          return config?.id === 1 && normalizedRole === 'master';
-      }
-
+      if (moduloId === 'admin-geral') return user?.email === 'admin@atlasum.com.br' || isModoCEO;
       if (moduloId === 'configuracoes') return normalizedRole === 'master';
       if (normalizedRole === 'master') return true;
 
@@ -106,7 +84,7 @@ export function Sidebar({
       const regrasPadrao: Record<string, string[]> = {
           'painel': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
           'novo-chamado': ['administrativo', 'gestor', 'tecnico', 'usuario', 'cliente'],
-          'central': ['administrativo', 'gestor'], // 🚀 REGRAS DE PERMISSÃO DA CENTRAL
+          'central': ['administrativo', 'gestor'],
           'ordens': ['administrativo', 'gestor', 'tecnico', 'cliente'],
           'equipamentos': ['administrativo', 'gestor', 'tecnico', 'cliente'],
           'manuais': ['administrativo', 'gestor', 'tecnico', 'cliente'],
@@ -133,29 +111,33 @@ export function Sidebar({
 
   return (
     <>
-      {isMobileOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] md:hidden transition-opacity"
-          onClick={() => setIsMobileOpen?.(false)}
-        />
-      )}
+      {isMobileOpen && ( <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] md:hidden transition-opacity" onClick={() => setIsMobileOpen?.(false)} /> )}
 
       <aside className={`fixed inset-y-0 left-0 z-[70] flex flex-col transition-all duration-500 bg-theme-card border-r border-theme shadow-2xl md:shadow-none ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isCollapsed ? 'md:w-24 w-72' : 'w-72'}`}>
-          <div className="h-24 flex items-center justify-between px-6 shrink-0 relative overflow-hidden">
+          <div className="h-auto py-6 flex flex-col items-center justify-center px-4 shrink-0 relative border-b border-theme/50">
               {(!isCollapsed || window.innerWidth < 768) ? (
-                <div className="flex items-center gap-3 animate-fadeIn">
+                <div className="flex flex-col items-center w-full animate-fadeIn">
                     {logoUrl ? (
-                        <div className="w-11 h-11 rounded-2xl bg-white shadow-sm flex items-center justify-center p-2 shrink-0 border border-slate-200">
+                        <div className="w-16 h-16 rounded-2xl bg-white shadow-sm flex items-center justify-center p-2 border border-slate-200 mb-3">
                             <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
                         </div>
                     ) : (
-                        <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-xl shrink-0 shadow-lg bg-primary-theme">
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-3xl shadow-lg bg-primary-theme mb-3">
                           {companyName.charAt(0).toUpperCase()}
                         </div>
                     )}
-                    <div className="flex flex-col justify-center">
-                      <h1 className="text-[15px] font-black text-theme-main tracking-tight leading-tight truncate w-36">{companyName}</h1>
-                      <span className="text-[9px] font-black text-primary-theme uppercase tracking-widest opacity-80 mt-0.5">Eng. Clínica</span>
+                    
+                    {/* 🚀 PAINEL DE BORDO DO CEO (IDENTIFICA O AMBIENTE CLARAMENTE) */}
+                    <div className="w-full bg-slate-900 dark:bg-slate-800 p-3 rounded-2xl border border-slate-700 flex flex-col items-center justify-center shadow-inner mt-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                           <Globe size={10} /> Ambiente Acessado
+                        </span>
+                        <span className="text-sm font-black text-emerald-400 text-center truncate w-full">{companyName}</span>
+                        {isModoCEO && (
+                            <span className="mt-2 text-[8px] bg-blue-600 text-white px-2 py-0.5 rounded-md font-black uppercase tracking-widest shadow-md">
+                                Modo CEO / Matriz
+                            </span>
+                        )}
                     </div>
                 </div>
               ) : (
@@ -166,7 +148,7 @@ export function Sidebar({
               )}
           </div>
 
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 custom-scrollbar space-y-1">
+          <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar space-y-1">
               {visibleMenu.map((item, index) => {
                   const active = view === item.id;
                   const showSection = item.section && (!isCollapsed || window.innerWidth < 768) && (index === 0 || visibleMenu[index-1].section !== item.section);
@@ -174,7 +156,7 @@ export function Sidebar({
                   return (
                       <div key={item.id} className="px-3">
                           {showSection && (
-                              <div className="px-4 pt-6 pb-2">
+                              <div className="px-4 pt-4 pb-2">
                                   <p className="text-[10px] font-black uppercase tracking-[0.25em] text-theme-muted opacity-60">{item.section}</p>
                               </div>
                           )}
@@ -185,20 +167,9 @@ export function Sidebar({
                                   ? 'bg-primary-theme shadow-md shadow-primary-theme/20 ring-1 ring-primary-theme/30' 
                                   : 'hover:bg-theme-card hover:shadow-sm border border-transparent hover:border-theme'}`}
                           >
-                              <item.icon 
-                                  size={18} 
-                                  strokeWidth={1.5} 
-                                  className={`transition-all duration-300 ${active ? 'text-white' : 'text-theme-muted group-hover:text-primary-theme'}`}
-                              />
+                              <item.icon size={18} strokeWidth={1.5} className={`transition-all duration-300 ${active ? 'text-white' : 'text-theme-muted group-hover:text-primary-theme'}`}/>
                               {(!isCollapsed || window.innerWidth < 768) && (
-                                  <span className={`text-[13px] font-bold tracking-tight transition-all ${active ? 'text-white' : 'text-theme-main'}`}>
-                                      {item.label}
-                                  </span>
-                              )}
-                              {(isCollapsed && window.innerWidth >= 768) && (
-                                  <div className="absolute left-full ml-4 px-3 py-2 bg-theme-card backdrop-blur-xl border border-theme text-theme-main text-[11px] font-black rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50 whitespace-nowrap shadow-2xl">
-                                      {item.label}
-                                  </div>
+                                  <span className={`text-[13px] font-bold tracking-tight transition-all ${active ? 'text-white' : 'text-theme-main'}`}>{item.label}</span>
                               )}
                           </button>
                       </div>
@@ -211,23 +182,6 @@ export function Sidebar({
           </button>
 
           <div className="p-4 mt-auto border-t border-theme bg-slate-50/50">
-              {(!isCollapsed || window.innerWidth < 768) && (
-                <div className="mb-4 animate-fadeIn">
-                  <div className="flex justify-center items-center bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-                    <div className="flex gap-2 px-1">
-                      {ATLAS_THEMES.map((theme) => (
-                        <button key={theme.id} onClick={() => handleThemeChange(theme)} className={`w-5 h-5 rounded-full transition-all duration-500 hover:scale-110 ${themeColor === theme.primary ? 'ring-2 ring-primary-theme ring-offset-2 scale-110 shadow-md' : 'opacity-50 hover:opacity-100'}`} style={{ backgroundColor: theme.primary }} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-col gap-1 mb-4 px-2 py-3 bg-white border border-slate-200 rounded-2xl hidden md:flex shadow-sm">
-                  <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider text-center bg-blue-50 py-0.5 rounded-md mx-2">
-                      {config?.id === 1 && normalizedRole === 'master' ? 'SUPER ADMIN' : normalizedRole}
-                  </span>
-                  <span className="text-xs font-bold text-slate-800 text-center truncate">{user?.nome || 'Sua Conta'}</span>
-              </div>
               <button onClick={onLogout} className="group flex items-center justify-center md:justify-start gap-3 w-full px-4 py-3.5 bg-white text-rose-500 hover:bg-rose-50 border border-slate-200 rounded-xl transition-all duration-300 active:scale-95 shadow-sm">
                   <LogOut size={16} strokeWidth={2.5} className="group-hover:-translate-x-1 transition-transform" />
                   {(!isCollapsed || window.innerWidth < 768) && <span className="text-xs font-black uppercase tracking-widest">Sair da Conta</span>}
@@ -239,7 +193,5 @@ export function Sidebar({
 }
 
 function PieChart(props: any) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth||2} strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
-  );
+  return ( <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={props.strokeWidth||2} strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg> );
 }

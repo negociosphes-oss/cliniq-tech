@@ -3,7 +3,7 @@ import { Plus, Trash2, ArrowRight, Layers, GitBranch, Loader2 } from 'lucide-rea
 import { supabase } from '../../supabaseClient';
 
 interface Props {
-  tenantId: number; // 🚀 PROP INJETADA PARA O TYPESCRIPT E BLINDAGEM
+  tenantId: number; 
 }
 
 export function ChecklistRules({ tenantId }: Props) {
@@ -25,22 +25,31 @@ export function ChecklistRules({ tenantId }: Props) {
   }, [tenantId]);
 
   const fetchDados = async () => {
-    setLoading(true);
-    
-    // 🚀 BLINDAGEM APLICADA: Traz as regras e tecnologias do cliente atual
-    const [resRegras, resTecs, resMods, resTipos] = await Promise.all([
-      supabase.from('checklists_regras').select('*, tecnologias(nome), checklists_biblioteca(titulo)').eq('tenant_id', tenantId),
-      supabase.from('tecnologias').select('id, nome').eq('tenant_id', tenantId).order('nome'),
-      // 🚀 MODELOS HÍBRIDOS: Puxa os modelos do cliente + os Modelos Globais da Atlasum (tenant_id = 1)
-      supabase.from('checklists_biblioteca').select('id, titulo, tenant_id').or(`tenant_id.eq.${tenantId},tenant_id.eq.1`).order('id', { ascending: false }),
-      supabase.from('tipos_ordem_servico').select('*').order('nome') // Tipos de OS geralmente são fixos/globais
-    ]);
+    try {
+      setLoading(true);
+      
+      // 🚀 AGORA ELE BUSCA O NOME, FABRICANTE E MODELO PARA FICAR CLARO
+      const [resRegras, resTecs, resMods, resTipos] = await Promise.all([
+        supabase.from('checklists_regras').select('*, tecnologias(nome, fabricante, modelo), checklists_biblioteca(titulo)').eq('tenant_id', tenantId),
+        supabase.from('tecnologias').select('id, nome, fabricante, modelo').eq('tenant_id', tenantId).order('nome'),
+        supabase.from('checklists_biblioteca').select('id, titulo, tenant_id').or(`tenant_id.eq.${tenantId},tenant_id.eq.1`).order('id', { ascending: false }),
+        supabase.from('tipos_ordem_servico').select('*').order('nome') 
+      ]);
 
-    setRegras(resRegras.data || []);
-    setTecnologias(resTecs.data || []);
-    setModelos(resMods.data || []);
-    setTiposOs(resTipos.data || []);
-    setLoading(false);
+      if (resRegras.error) console.error("Erro Regras:", resRegras.error);
+      if (resTecs.error) console.error("Erro Tecnologias:", resTecs.error);
+      if (resMods.error) console.error("Erro Modelos:", resMods.error);
+
+      setRegras(resRegras.data || []);
+      setTecnologias(resTecs.data || []);
+      setModelos(resMods.data || []);
+      setTiposOs(resTipos.data || []);
+      
+    } catch (err) {
+      console.error("Falha ao sincronizar motor de regras:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddRule = async () => {
@@ -50,7 +59,7 @@ export function ChecklistRules({ tenantId }: Props) {
     const techIdParaSalvar = novoTecId ? Number(novoTecId) : null;
 
     const { error } = await supabase.from('checklists_regras').insert([{
-      tenant_id: tenantId, // 🚀 SALVANDO A REGRA NO LUGAR CERTO
+      tenant_id: tenantId, 
       tipo_servico: novoTipo,
       tecnologia_id: techIdParaSalvar, 
       checklist_id: Number(novoCheckId)
@@ -115,8 +124,12 @@ export function ChecklistRules({ tenantId }: Props) {
                 onChange={e => setNovoTecId(e.target.value)}
             >
               <option value="" className="font-black text-primary-theme">✨ QUALQUER UM (Regra Global)</option>
-              <optgroup label="Específico por Tecnologia">
-                {tecnologias.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              <optgroup label="Modelos Específicos Catalogados">
+                {tecnologias.map(t => {
+                   // 🚀 MONTA O NOME CLARO NO DROPDOWN (Ex: Monitor - Philips Efficia)
+                   const nomeExibicao = t.fabricante && t.modelo ? `${t.nome} (${t.fabricante} - ${t.modelo})` : t.nome;
+                   return <option key={t.id} value={t.id}>{nomeExibicao}</option>
+                })}
               </optgroup>
             </select>
           </div>
@@ -172,7 +185,9 @@ export function ChecklistRules({ tenantId }: Props) {
                   {regra.tecnologia_id ? (
                      <span className="font-bold text-theme-main flex items-center gap-2">
                          <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                         {regra.tecnologias?.nome}
+                         {/* 🚀 EXIBE O NOME EXATO DO MODELO NA REGRA CRIADA */}
+                         {regra.tecnologias?.nome} 
+                         {regra.tecnologias?.modelo && <span className="text-theme-muted">({regra.tecnologias.modelo})</span>}
                      </span>
                   ) : (
                      <span className="font-black text-primary-theme bg-primary-theme/10 border border-primary-theme/20 px-3 py-1 rounded-md text-xs flex items-center gap-1.5 uppercase tracking-widest">

@@ -27,41 +27,45 @@ export function OSPublicView() {
     if (!osUuid) return setLoading(false);
 
     try {
-      // 1. PRIMEIRO: Busca a OS para saber de qual Tenant (Empresa) ela é!
-      const { data: osData } = await supabase
+      // 🚀 BUSCA BLINDADA (Erro 400 Resolvido)
+      // Ajustamos a busca para usar apenas as colunas que realmente existem após a arquitetura SaaS
+      const { data: osData, error: osError } = await supabase
         .from('ordens_servico')
         .select(`
           *,
           equipamentos:equipamento_id (
             *,
             clientes:cliente_id (*),
-            tecnologia:dict_tecnologias (nome)
+            tecnologias:tecnologia_id (nome, fabricante, modelo)
           )
         `)
         .eq('id_publico', osUuid)
         .maybeSingle();
 
+      if (osError) {
+          console.error("Erro do Supabase ao buscar O.S.:", osError);
+          throw osError;
+      }
+
       if (osData) {
         setOs(osData);
 
-        // 2. SEGUNDO: Busca a configuração exata do dono da O.S. (Blindagem Multi-tenant)
         const tenantId = osData.tenant_id || 1;
         const { data: config } = await supabase
-          .from('configuracoes_empresa')
+          .from('empresas_inquilinas')
           .select('*')
-          .eq('tenant_id', tenantId)
+          .eq('id', tenantId)
           .maybeSingle();
 
         if (config) setSystemConfig(config);
 
-        // 3. AUTO-PRINT: Se veio pelo botão da impressora, já puxa a tela de impressão
         if (window.location.search.includes('print=true')) {
             setTimeout(() => window.print(), 800);
         }
       }
 
     } catch (err) {
-      console.error("Erro ao carregar dados:", err);
+      console.error("Erro ao carregar dados da OS Pública:", err);
     } finally {
       setLoading(false);
     }
@@ -84,17 +88,17 @@ export function OSPublicView() {
     </div>
   );
 
-  // 🚀 LÓGICA DE DADOS CORRIGIDA E BLINDADA
-  const empresaNome = systemConfig?.nome_fantasia || systemConfig?.nome_empresa || 'ATLAS SYSTEM MEDICAL';
+  const empresaNome = systemConfig?.nome_fantasia || systemConfig?.razao_social || 'ATLAS SYSTEM MEDICAL';
   const empresaCnpj = systemConfig?.cnpj || 'Não informado';
   const clienteNome = os.equipamentos?.clientes?.nome_fantasia || os.equipamentos?.clientes?.razao_social || os.cliente_nome || 'Unidade Hospitalar';
   const clienteDoc = os.equipamentos?.clientes?.cnpj_cpf || 'Não informado';
   
-  // Nomenclatura Híbrida do Equipamento
-  const nomeEquipamento = os.equipamentos?.nome || os.equipamentos?.tecnologia?.nome || os.equipamento_nome || 'Equipamento Médico';
+  // 🚀 NOME DO EQUIPAMENTO COMPLETO (Com Marca e Modelo)
+  const tec = os.equipamentos?.tecnologias;
+  const nomeBase = tec?.nome || os.equipamentos?.nome || os.equipamento_nome || 'Equipamento Médico';
+  const nomeEquipamento = tec?.fabricante && tec?.modelo ? `${nomeBase} (${tec.fabricante} - ${tec.modelo})` : nomeBase;
 
-  // 🚀 QUEBRA DE CACHE DA LOGO (Garante imagem atualizada)
-  const rawLogoUrl = systemConfig?.logo_url || systemConfig?.logotipo_url;
+  const rawLogoUrl = systemConfig?.logo_url;
   const finalLogoUrl = rawLogoUrl ? `${getImageUrl(rawLogoUrl, 'logos')}?v=${new Date().getTime()}` : null;
 
   let fotos: string[] = [];
@@ -109,7 +113,6 @@ export function OSPublicView() {
   return (
     <div className="min-h-screen bg-[#F2F2F7] font-sans text-slate-900">
       
-      {/* BARRA SUPERIOR - MODO WEB */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-black/5 p-4 flex justify-between items-center px-6 md:px-10 print:hidden shadow-sm">
         <div className="flex items-center gap-3">
            {finalLogoUrl ? (
@@ -124,7 +127,6 @@ export function OSPublicView() {
         </button>
       </nav>
 
-      {/* CONTEÚDO - MODO WEB */}
       <main className="max-w-3xl mx-auto p-4 md:p-6 py-8 md:py-12 space-y-6 print:p-0 print:m-0 print:max-w-none">
         
         <div className="print:hidden space-y-8 animate-fadeIn">
@@ -142,7 +144,7 @@ export function OSPublicView() {
                 <div>
                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Equipamento</p>
                    <h2 className="text-xl font-black text-slate-800">{nomeEquipamento}</h2>
-                   <p className="text-xs font-bold text-blue-700 mt-1">TAG: {os.equipamentos?.tag || 'N/A'} {os.equipamentos?.n_serie ? `| S/N: ${os.equipamentos.n_serie}` : ''}</p>
+                   <p className="text-xs font-bold text-blue-700 mt-1">TAG: {os.equipamentos?.tag || 'N/A'} {os.equipamentos?.numero_serie ? `| S/N: ${os.equipamentos.numero_serie}` : ''}</p>
                 </div>
               </div>
 
@@ -160,17 +162,17 @@ export function OSPublicView() {
               </div>
 
               <div className="pt-6 border-t border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><FileText size={14}/> Defeito Relatado</p>
-                  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 font-medium text-sm">
-                      "{os.defeito_relatado || os.descricao_problema || 'Manutenção programada.'}"
-                  </div>
+                 <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><FileText size={14}/> Defeito Relatado</p>
+                 <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-slate-700 font-medium text-sm">
+                     "{os.defeito_relatado || os.descricao_problema || 'Manutenção programada.'}"
+                 </div>
               </div>
 
               <div className="pt-6 border-t border-slate-100">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><CheckCircle2 size={14}/> Laudo / Solução Aplicada</p>
-                  <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 text-slate-800 font-medium text-sm whitespace-pre-wrap">
-                      {os.solucao_aplicada || os.laudo_tecnico || 'Atendimento em andamento. Laudo não emitido.'}
-                  </div>
+                 <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest flex items-center gap-1"><CheckCircle2 size={14}/> Laudo / Solução Aplicada</p>
+                 <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 text-slate-800 font-medium text-sm whitespace-pre-wrap">
+                     {os.solucao_aplicada || os.laudo_tecnico || 'Atendimento em andamento. Laudo não emitido.'}
+                 </div>
               </div>
 
               {fotosValidas.length > 0 && (
@@ -191,12 +193,9 @@ export function OSPublicView() {
            </section>
         </div>
 
-        {/* ========================================================= */}
-        {/* 🚀 LAYOUT DE IMPRESSÃO "PDF AZUL" PADRÃO ENTERPRISE */}
-        {/* ========================================================= */}
+        {/* LAYOUT DE IMPRESSÃO PDF */}
         <div className="hidden print:block bg-white text-slate-900 w-full max-w-[210mm] mx-auto text-[11px] leading-tight">
             
-            {/* CABEÇALHO DA O.S. */}
             <div className="border-b-4 border-blue-900 pb-4 mb-6 flex justify-between items-end">
                 <div className="w-1/2">
                    {finalLogoUrl ? (
@@ -212,7 +211,6 @@ export function OSPublicView() {
                 </div>
             </div>
 
-            {/* BLOCO 1: CLIENTE E DATAS */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">1. DADOS DO CLIENTE E ATENDIMENTO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -239,7 +237,6 @@ export function OSPublicView() {
                 </table>
             </div>
 
-            {/* BLOCO 2: EQUIPAMENTO */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">2. DADOS DO EQUIPAMENTO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -248,13 +245,13 @@ export function OSPublicView() {
                             <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">Equipamento:</td>
                             <td className="border border-slate-300 p-2 w-[35%] font-bold uppercase text-blue-900">{nomeEquipamento}</td>
                             <td className="border border-slate-300 p-2 w-[15%] bg-slate-50 font-bold uppercase">Fabricante:</td>
-                            <td className="border border-slate-300 p-2 w-[35%] font-semibold uppercase">{os.equipamentos?.fabricante || '-'}</td>
+                            <td className="border border-slate-300 p-2 w-[35%] font-semibold uppercase">{tec?.fabricante || os.equipamentos?.fabricante || '-'}</td>
                         </tr>
                         <tr>
                             <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Modelo:</td>
-                            <td className="border border-slate-300 p-2 font-semibold uppercase">{os.equipamentos?.modelo || '-'}</td>
+                            <td className="border border-slate-300 p-2 font-semibold uppercase">{tec?.modelo || os.equipamentos?.modelo || '-'}</td>
                             <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">Série (S/N):</td>
-                            <td className="border border-slate-300 p-2 font-semibold">{os.equipamentos?.n_serie || '-'}</td>
+                            <td className="border border-slate-300 p-2 font-semibold">{os.equipamentos?.numero_serie || os.equipamentos?.n_serie || '-'}</td>
                         </tr>
                         <tr>
                             <td className="border border-slate-300 p-2 bg-slate-50 font-bold uppercase">TAG/Patrimônio:</td>
@@ -266,7 +263,6 @@ export function OSPublicView() {
                 </table>
             </div>
 
-            {/* BLOCO 3: PROBLEMA E SOLUÇÃO */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">3. DETALHES TÉCNICOS DA INTERVENÇÃO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -283,12 +279,11 @@ export function OSPublicView() {
                 </table>
             </div>
 
-            {/* BLOCO 4: FOTOS SE HOUVER (Evita quebrar no meio da folha) */}
             {fotosValidas.length > 0 && (
                 <div className="mb-5" style={{ pageBreakInside: 'avoid' }}>
                     <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-2">4. EVIDÊNCIAS FOTOGRÁFICAS</div>
                     <div className="grid grid-cols-3 gap-2">
-                        {fotosValidas.slice(0, 3).map((url, i) => { // Limita a 3 fotos para não estourar folha A4 facilmente
+                        {fotosValidas.slice(0, 3).map((url, i) => { 
                             const imgSrc = getImageUrl(url);
                             return imgSrc ? (
                                 <div key={i} className="border border-slate-300 p-1 flex items-center justify-center h-40">
@@ -300,7 +295,6 @@ export function OSPublicView() {
                 </div>
             )}
 
-            {/* BLOCO 5: ASSINATURAS (Preso ao final) */}
             <div className="mt-16 flex justify-between gap-10 px-8" style={{ pageBreakInside: 'avoid' }}>
                 <div className="w-[45%] text-center border-t border-black pt-2">
                     <p className="font-black text-[10px] uppercase text-slate-800">Técnico Responsável</p>

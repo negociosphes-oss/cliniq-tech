@@ -7,13 +7,16 @@ import { PadroesList } from './padroes/PadroesList';
 import { ProcedimentosList } from './procedimentos/ProcedimentosList';
 import { TseNormasList } from './TseNormasList'; 
 
+// 🚀 FAREJADOR DE SUBDOMÍNIO (ATUALIZADO E BLINDADO)
 const getSubdomain = () => {
   const hostname = window.location.hostname;
+  if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') return 'atlasum-sistema';
+  
   const parts = hostname.split('.');
   if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
       return parts[0];
   }
-  return 'admin'; 
+  return 'atlasum-sistema'; 
 };
 
 export function MetrologiaPage() {
@@ -25,16 +28,17 @@ export function MetrologiaPage() {
       try {
         const slug = getSubdomain();
         let { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
-        if (data) setTenantId(data.id);
-        else setTenantId(-1);
+        
+        // 🚀 Se não achar, força o Inquilino 1 (Matriz) para não travar a tela
+        setTenantId(data ? data.id : 1);
       } catch (err) {
-        setTenantId(-1);
+        setTenantId(1);
       }
     };
     initTenant();
   }, []);
 
-  if (!tenantId) return <div className="p-8 text-center flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32}/></div>;
+  if (tenantId === null) return <div className="p-8 text-center flex justify-center"><Loader2 className="animate-spin text-indigo-600" size={32}/></div>;
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 overflow-hidden animate-fadeIn">
@@ -57,7 +61,7 @@ export function MetrologiaPage() {
 
       <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
         <div className="max-w-[1600px] mx-auto pb-24">
-            {/* 🚀 O ID DO INQUILINO SENDO ENVIADO PARA OS FILHOS PARA BLINDAR A TELA */}
+            {/* 🚀 O ID DO INQUILINO SENDO ENVIADO COM SEGURANÇA */}
             {activeTab === 'dashboard' && <MetrologiaDashboard onChangeTab={setActiveTab} tenantId={tenantId} />}
             {activeTab === 'padroes' && <PadroesList tenantId={tenantId} />}
             {activeTab === 'procedimentos' && <ProcedimentosList tenantId={tenantId} />}

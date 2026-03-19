@@ -5,14 +5,15 @@ import { ItemFormModal } from './ItemFormModal';
 import { MovimentacaoModal } from './MovimentacaoModal';
 import { ImportCsvModal } from './ImportCsvModal'; 
 
-// 🚀 FAREJADOR DE SUBDOMÍNIO (PARA DESCOBRIR O TENANT)
+// 🚀 FAREJADOR DE SUBDOMÍNIO (ATUALIZADO E BLINDADO)
 const getSubdomain = () => {
     const hostname = window.location.hostname;
+    if (hostname === 'atlasum.com.br' || hostname === 'www.atlasum.com.br') return 'atlasum-sistema';
     const parts = hostname.split('.');
     if (parts.length >= 2 && parts[0] !== 'www' && parts[0] !== 'app' && parts[0] !== 'localhost') {
         return parts[0];
     }
-    return 'admin'; 
+    return 'atlasum-sistema'; 
 };
 
 export function EstoquePage() {
@@ -32,27 +33,27 @@ export function EstoquePage() {
       try {
         const slug = getSubdomain();
         let { data } = await supabase.from('empresas_inquilinas').select('id').eq('slug_subdominio', slug).maybeSingle();
-        if (data) setTenantId(data.id);
-        else setTenantId(-1);
+        // 🚀 Se não achar, força o Inquilino 1 (Matriz) para não travar a tela
+        setTenantId(data ? data.id : 1);
       } catch (err) {
-        setTenantId(-1);
+        setTenantId(1);
       }
     };
     initTenant();
   }, []);
 
   useEffect(() => { 
-      if (tenantId && tenantId > 0) {
+      // 🚀 Agora ele carrega sempre que o tenantId estiver definido (mesmo que seja 1)
+      if (tenantId !== null) {
           fetchEstoque(); 
       }
   }, [tenantId]);
 
   const fetchEstoque = async () => {
     setLoading(true);
-    // 🚀 FILTRO MESTRE DE ISOLAMENTO ADICIONADO AQUI
     const { data, error } = await supabase.from('estoque_itens').select('*').eq('tenant_id', tenantId).order('nome');
     if (!error && data) setItens(data);
-    setLoading(false);
+    setLoading(false); // Desliga o loading obrigatoriamente
   };
 
   const itensFiltrados = itens.filter(i => 
@@ -64,7 +65,7 @@ export function EstoquePage() {
   const openEdit = (item: any) => { setSelectedItem(item); setItemModalOpen(true); };
   const openMov = (item: any) => { setSelectedItem(item); setMovModalOpen(true); };
 
-  if (!tenantId) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>;
+  if (tenantId === null) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={32}/></div>;
 
   return (
     <div className="max-w-[1600px] mx-auto p-4 md:p-8 animate-fadeIn pb-24">

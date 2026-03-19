@@ -15,19 +15,29 @@ export function ChecklistManager({ tenantId }: Props) {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<any>(null);
 
-  useEffect(() => { if (tenantId) fetchModelos(); }, [tenantId]);
+  useEffect(() => { 
+      if (tenantId) fetchModelos(); 
+  }, [tenantId]);
 
   const fetchModelos = async () => {
     try {
       setLoading(true);
-      // 🚀 FILTRO MESTRE DE ISOLAMENTO APLICADO
+      
+      console.log("🔍 [DEBUG ATLASUM] Buscando checklists. O seu Tenant ID atual é:", tenantId);
+
+      // 🚀 UPGRADE SAAS MESTRE: Busca os checklists do Inquilino logado OU os Modelos Globais da Matriz (ID 1)
       const { data, error } = await supabase
         .from('checklists_biblioteca')
         .select('*')
-        .eq('tenant_id', tenantId) 
+        .or(`tenant_id.eq.${tenantId},tenant_id.eq.1`) 
         .order('created_at', { ascending: false });
         
-      if (error) throw error;
+      console.log("🔍 [DEBUG ATLASUM] Resposta do Banco de Dados:", data);
+
+      if (error) {
+          console.error('Erro ao buscar checklists no Supabase:', error);
+          throw error;
+      }
 
       const processados = (data || []).map(m => {
           let count = 0;
@@ -40,7 +50,11 @@ export function ChecklistManager({ tenantId }: Props) {
       });
       
       setModelos(processados);
-    } catch (err) { console.error('Erro Fatal:', err); } finally { setLoading(false); }
+    } catch (err) { 
+        console.error('Erro Fatal:', err); 
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -69,7 +83,7 @@ export function ChecklistManager({ tenantId }: Props) {
               isOpen={isBuilderOpen} 
               onClose={() => setIsBuilderOpen(false)} 
               modeloInicial={selectedModel}
-              tenantId={tenantId} // 🚀 REPASSA O TENANT_ID PARA SALVAR NO CLIENTE CERTO
+              tenantId={tenantId}
               onSuccess={() => { setIsBuilderOpen(false); fetchModelos(); }}
           />
       );
@@ -92,7 +106,7 @@ export function ChecklistManager({ tenantId }: Props) {
             <input 
               value={busca}
               onChange={e => setBusca(e.target.value)}
-              className="w-full h-12 pl-12 pr-4 rounded-xl input-theme font-bold shadow-sm outline-none"
+              className="w-full h-12 pl-12 pr-4 rounded-xl input-theme font-bold shadow-sm outline-none bg-theme-card border border-theme focus:ring-2 focus:ring-primary-theme"
               placeholder="Pesquisar checklist ou vínculo..."
             />
          </div>
@@ -107,7 +121,7 @@ export function ChecklistManager({ tenantId }: Props) {
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 text-theme-muted">
-            <Loader2 className="animate-spin mb-4" size={40}/>
+            <Loader2 className="animate-spin mb-4 text-primary-theme" size={40}/>
             <p className="font-bold">Carregando biblioteca...</p>
         </div>
       ) : (
@@ -124,6 +138,7 @@ export function ChecklistManager({ tenantId }: Props) {
                 <tbody className="divide-y divide-theme">
                     {lista.map(modelo => {
                         const tituloValid = modelo.titulo || 'Sem Título';
+                        const isGlobal = modelo.tenant_id === 1 && tenantId !== 1;
 
                         return (
                             <tr key={modelo.id} className="hover:bg-theme-page/50 transition-colors group">
@@ -137,6 +152,11 @@ export function ChecklistManager({ tenantId }: Props) {
                                                 <h3 className={`font-black text-sm ${modelo.titulo ? 'text-theme-main' : 'text-amber-500 flex items-center gap-1'}`}>
                                                     {!modelo.titulo && <AlertTriangle size={14}/>} {tituloValid}
                                                 </h3>
+                                                {isGlobal && (
+                                                    <span className="px-2 py-0.5 bg-indigo-500 text-white text-[9px] font-black uppercase rounded shadow-sm">
+                                                        Modelo Matriz
+                                                    </span>
+                                                )}
                                                 {modelo.tipo_os && (
                                                     <span className="px-2 py-0.5 bg-primary-theme/10 text-primary-theme border border-primary-theme/20 text-[9px] font-black uppercase rounded shadow-sm">
                                                         Vínculo: {modelo.tipo_os}

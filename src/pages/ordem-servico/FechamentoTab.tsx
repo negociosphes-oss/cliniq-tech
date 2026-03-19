@@ -44,12 +44,24 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
   };
 
   const getLinkPublico = () => `${window.location.origin}/view/os/${osForm.id_publico || osForm.id}`;
-  const getEquipamentoNome = () => osForm.equipamento?.nome || osForm.equipamento?.tecnologia?.nome || osForm.equipamento_nome || 'Equipamento';
+  
+  // 🚀 NOME DO EQUIPAMENTO COMPLETO (Com Marca e Modelo)
+  const getEquipamentoNome = () => {
+      const tec = osForm.equipamento?.tecnologia || osForm.equipamento?.tecnologias;
+      const nomeBase = tec?.nome || osForm.equipamento?.nome || osForm.equipamento_nome || 'Equipamento';
+      if (tec?.fabricante && tec?.modelo) {
+          return `${nomeBase} (${tec.fabricante} - ${tec.modelo})`;
+      }
+      return nomeBase;
+  };
 
+  // 🚀 MENSAGEM DO WHATSAPP SUPER COMPLETA
   const getMensagemBase = () => {
      const link = getLinkPublico();
      const equipamento = getEquipamentoNome();
-     return `Olá ${osForm.solicitante_nome || 'Cliente'},\n\nA Ordem de Serviço #${osForm.id} referente ao equipamento ${equipamento} (TAG: ${osForm.equipamento?.tag || 'N/A'}) foi concluída com sucesso.\n\nPara acessar o relatório técnico e laudos atrelados, clique no link seguro abaixo:\n\n🔗 ${link}\n\nAtenciosamente,\nEquipe Técnica`;
+     const tipoOS = osForm.tipo ? osForm.tipo.toUpperCase() : 'SERVIÇO';
+
+     return `Olá ${osForm.solicitante_nome || 'Cliente'},\n\nA Ordem de Serviço #${osForm.id} (${tipoOS}) referente ao equipamento ${equipamento} (TAG: ${osForm.equipamento?.tag || 'N/A'}) foi concluída com sucesso.\n\nPara acessar o relatório técnico e laudos atrelados, acesse o link seguro abaixo:\n\n🔗 ${link}\n\nAtenciosamente,\nEquipe Técnica`;
   };
 
   const handleShareWhatsApp = () => {
@@ -60,17 +72,15 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
       window.open(url, '_blank');
   };
 
-  // 🚀 NOVO: ABRE DIRETO NO GMAIL WEB
   const handleShareGmail = () => {
-     const email = osForm.solicitante_email || osForm.cliente?.email_contato || osForm.cliente?.email || '';
-     const assunto = `Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`;
-     const corpo = getMensagemBase();
-     
-     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
-     window.open(gmailUrl, '_blank');
+      const email = osForm.solicitante_email || osForm.cliente?.email_contato || osForm.cliente?.email || '';
+      const assunto = `Ordem de Serviço #${osForm.id} Concluída - Relatório Técnico`;
+      const corpo = getMensagemBase();
+      
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${email}&su=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+      window.open(gmailUrl, '_blank');
   };
 
-  // 🚀 NOVO: COPIA TUDO PRO CTRL+V
   const handleCopyText = () => {
       navigator.clipboard.writeText(getMensagemBase());
       if (showToast) showToast('Texto copiado! Só colar no e-mail ou onde desejar.', 'success');
@@ -141,12 +151,10 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
                   <MessageCircle size={18}/> WHATSAPP
                </button>
                
-               {/* 🚀 BOTÃO NOVO DO GMAIL */}
                <button onClick={handleShareGmail} className="px-5 py-3 bg-[#EA4335] hover:bg-[#d6382b] text-white rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
                   <Mail size={18}/> GMAIL (WEB)
                </button>
 
-               {/* 🚀 BOTÃO PLANO B (COPIAR) */}
                <button onClick={handleCopyText} className="px-5 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 text-xs">
                   <Copy size={18}/> COPIAR TEXTO
                </button>
@@ -158,7 +166,6 @@ export function FechamentoTab({ osForm, setOsForm, apontamentos, onFinalize, sta
          </div>
       ) : (
          <>
-            {/* O Resto das validações para encerrar a OS continua igualzinho... */}
             <div className="flex flex-col items-center justify-center pt-4 mt-8">
                {podeFinalizar ? (
                   <button 
