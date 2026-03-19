@@ -17,7 +17,7 @@ import { BibliotecaPage } from './pages/biblioteca/BibliotecaPage'
 import { EquipamentosPage } from './pages/equipamentos/EquipamentosPage'
 import { OrdemServicoPage } from './pages/ordem-servico/OrdemServicoPage'
 import { AberturaChamadoPage } from './pages/ordem-servico/AberturaChamadoPage'
-import { CentralChamados } from './pages/ordem-servico/CentralChamados' // 🚀 IMPORT DA NOVA CENTRAL DE SLA
+import { CentralChamados } from './pages/ordem-servico/CentralChamados' 
 import { CronogramaPage } from './pages/cronograma/CronogramaPage' 
 import { DicionarioPage } from './pages/tecnologia/DicionarioPage' 
 import { ClientesPage } from './pages/clientes/ClientesPage'
@@ -205,7 +205,6 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
   const [toast, setToast] = useState<{msg: string, type: 'success'|'error'|'info'} | null>(null);
   const [themeColor, setThemeColor] = useState(tenant?.cor_primaria || '#1e3a8a'); 
 
-  // Carrega a configuração dinâmica
   const config = { 
       id: tenant?.id, 
       nome_empresa: tenant?.nome_fantasia || 'Atlasum', 
@@ -351,10 +350,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
                     <Route path="/equipamentos" element={<EquipamentosPage />} />
                     <Route path="/novo-chamado" element={<AberturaChamadoPage equipamentos={equipamentos} clientes={clientes} showToast={showToast} fetchAll={fetchAll} user={user} configEmpresa={config} />} />
                     <Route path="/ordens" element={<OrdemServicoPage equipamentos={equipamentos} clientes={clientes} tecnicos={tecnicos} ordens={ordens} fetchAll={fetchAll} showToast={showToast} targetOsId={targetOsId} />} />
-                    
-                    {/* 🚀 A ROTA DA CENTRAL DE SLA ADICIONADA AQUI! */}
                     <Route path="/central" element={<CentralChamados ordens={ordens} equipamentos={equipamentos} tecnicos={tecnicos} configEmpresa={config} fetchAll={fetchAll} showToast={showToast} />} />
-                    
                     <Route path="/estoque" element={<EstoquePage />} />
                     <Route path="/clientes" element={<ClientesPage />} />
                     <Route path="/tecnologias" element={<DicionarioPage />} /> 
@@ -382,9 +378,16 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
 export default function App() { 
     const [tenant, setTenant] = useState<any>(null);
     const [loadingTenant, setLoadingTenant] = useState(true);
-    const [user, setUser] = useState<Usuario | null>(null); 
+    
+    // 🚀 A MÁGICA ACONTECE AQUI: Carrega o usuário da memória local antes de renderizar
+    const [user, setUser] = useState<Usuario | null>(() => {
+        const savedUser = localStorage.getItem('@atlasum_user');
+        if (savedUser) {
+            try { return JSON.parse(savedUser); } catch (e) { return null; }
+        }
+        return null;
+    }); 
 
-    // 🚀 LÓGICA DE ROTAS PÚBLICAS
     const isPublicViewOS = window.location.pathname.startsWith('/view/os');
     const isPublicAbertura = window.location.pathname.startsWith('/abrir-chamado');
 
@@ -407,7 +410,6 @@ export default function App() {
                 tData.logo_url = logoEncontrada ? `${logoEncontrada}?v=${new Date().getTime()}` : null;
                 tData.nome_fantasia = configDaEmpresa?.nome_fantasia || configDaEmpresa?.nome_empresa || tData.nome_fantasia;
                 
-                // Repassando os SLAs que puxou do banco!
                 tData.os_tipos_restrito = configDaEmpresa?.os_tipos_restritos || false;
                 tData.sla_critica_horas = configDaEmpresa?.sla_critica_horas || 2;
                 tData.sla_alta_horas = configDaEmpresa?.sla_alta_horas || 6;
@@ -438,7 +440,6 @@ export default function App() {
         initTenant();
     }, []);
 
-    // 🚀 INTERCEPTANDO AS ROTAS PÚBLICAS
     if (isPublicViewOS) return <ErrorBoundary><OSPublicView /></ErrorBoundary>;
     if (isPublicAbertura) return <ErrorBoundary><AberturaChamadoPublico /></ErrorBoundary>;
 
@@ -476,8 +477,18 @@ export default function App() {
         <ErrorBoundary>
             <Routes>
                 <Route path="/" element={user ? <Navigate to="/painel" replace /> : <LandingPage />} />
-                <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => setUser(u)} />} />
-                <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => setUser(null)} /> : <Navigate to="/login" replace /> } />
+                
+                {/* 🚀 SALVA O USUÁRIO NA MEMÓRIA AO LOGAR */}
+                <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => {
+                    localStorage.setItem('@atlasum_user', JSON.stringify(u));
+                    setUser(u);
+                }} />} />
+                
+                {/* 🚀 APAGA O USUÁRIO DA MEMÓRIA AO DESLOGAR */}
+                <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => {
+                    localStorage.removeItem('@atlasum_user');
+                    setUser(null);
+                }} /> : <Navigate to="/login" replace /> } />
             </Routes>
         </ErrorBoundary>
     )
