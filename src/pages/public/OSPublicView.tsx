@@ -7,12 +7,14 @@ import {
 import { saveAs } from 'file-saver';
 import { pdf } from '@react-pdf/renderer';
 
-// Motores de PDF
+// Motores de PDF Oficiais
 import { TseCertificadoService } from '../../services/TseCertificadoService';
 import { TseCertificadoPDF } from '../metrologia/TseCertificadoPDF';
 import { CertificadoService } from '../../services/CertificadoService';
 import { MetrologiaCertificadoPDF } from '../../documents/MetrologiaCertificadoPDF';
-import { imprimirRelatorio } from './reports/RelatorioTecnicoTemplate';
+
+// 🚀 VOLTAMOS PARA O SEU MOTOR OFICIAL (Ficha Branca e Limpa)
+import { RelatorioOSService } from '../../services/RelatorioOSService';
 
 export function OSPublicView() {
   const [os, setOs] = useState<any>(null);
@@ -71,7 +73,7 @@ export function OSPublicView() {
 
         setOs(osData);
 
-        // 🚀 CORREÇÃO DA LOGO: Busca os dados de configuração IGUAL ao sistema interno
+        // Busca os dados de configuração (Para puxar a sua Logo verdadeira)
         let finalConfig: any = {};
         const { data: confData } = await supabase.from('configuracoes_empresa').select('*').order('id', { ascending: true }).limit(1).maybeSingle();
         if (confData) finalConfig = { ...confData };
@@ -119,33 +121,20 @@ export function OSPublicView() {
   const isCalibracao = (os.tipo || '').toUpperCase().includes('CALIBRAÇÃO');
   const temLaudo = (isTse || isCalibracao) && os.status === 'Concluída';
 
+  // 🚀 AQUI ESTÁ A MÁGICA: Chama exatamente a função da tela de listagem
   const handleDownloadOS = async () => {
       setIsDownloadingOs(true);
       try {
-         const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', os.id).order('data_inicio');
-         const { data: pecasData } = await supabase.from('estoque_movimentacoes').select('*, estoque_itens(*)').eq('os_id', os.id).eq('tipo', 'SAIDA');
-         
-         let checklistData = null;
-         const { data: chkExec } = await supabase.from('os_checklists_execucao').select('*').eq('ordem_servico_id', os.id).maybeSingle();
-         if (chkExec && chkExec.checklist_id) {
-             // 🚀 CORREÇÃO DO NOME DA TABELA DE CHECKLIST
-             const { data: chkPadrao } = await supabase.from('checklists_biblioteca').select('*').eq('id', chkExec.checklist_id).maybeSingle();
-             if (chkPadrao) {
-                 checklistData = { perguntas: chkPadrao.itens_configuracao || chkPadrao.perguntas, respostas: chkExec.respostas || [] };
-             }
-         }
-
-         const fullData = {
+         // Formata os dados no formato exato que a imprimirFichaOS espera ler
+         const osDataCompleta = {
             ...os,
             equipamento: { ...os.equipamentos },
             cliente: { ...os.equipamentos?.clientes },
-            pecas: pecasData || [],
-            checklistData: checklistData,
-            apontamentos: aptData || []
+            tecnico: { nome: os.tecnico_nome } // Garante que o nome do técnico vá para a assinatura
          };
          
-         // CHAMA SEU MOTOR INTERNO OFICIAL E PASSA A CONFIGURAÇÃO CORRETA COM A LOGO
-         await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig || {});
+         // Chama a sua função oficial! O layout vai sair branquinho e perfeito.
+         RelatorioOSService.imprimirFichaOS([osDataCompleta], systemConfig || {});
 
       } catch (err) {
          console.error(err);
@@ -224,7 +213,7 @@ export function OSPublicView() {
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0"><FileText size={24}/></div>
                     <div>
-                        <h4 className="font-bold text-slate-800">Relatório Técnico de Serviço</h4>
+                        <h4 className="font-bold text-slate-800">Ficha da Ordem de Serviço</h4>
                         <p className="text-xs text-slate-500 font-medium">Ordem de Serviço #{os.id}</p>
                     </div>
                 </div>
