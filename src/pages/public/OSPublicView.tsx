@@ -27,17 +27,10 @@ export function OSPublicView() {
     if (!osUuid) return setLoading(false);
 
     try {
-      // 🚀 BUSCA BLINDADA E SINTAXE CORRIGIDA
+      // 🚀 PASSO 1: Busca a O.S. e o Equipamento base (Sem Joins complexos que causam erro 400)
       const { data: osData, error: osError } = await supabase
         .from('ordens_servico')
-        .select(`
-          *,
-          equipamentos:equipamento_id (
-            *,
-            clientes:cliente_id (*),
-            tecnologias (nome, fabricante, modelo)
-          )
-        `)
+        .select('*, equipamentos:equipamento_id (*)')
         .eq('id_publico', osUuid)
         .maybeSingle();
 
@@ -47,8 +40,34 @@ export function OSPublicView() {
       }
 
       if (osData) {
+        // 🚀 PASSO 2: Busca o Cliente e a Tecnologia separadamente (100% à prova de falhas)
+        const clienteId = osData.cliente_id || osData.equipamentos?.cliente_id;
+        const tecId = osData.equipamentos?.tecnologia_id;
+
+        let clienteInfo = null;
+        let tecInfo = null;
+
+        if (clienteId) {
+           const { data: cli } = await supabase.from('clientes').select('*').eq('id', clienteId).maybeSingle();
+           clienteInfo = cli;
+        }
+
+        if (tecId) {
+           const { data: tec } = await supabase.from('tecnologias').select('*').eq('id', tecId).maybeSingle();
+           tecInfo = tec;
+        }
+
+        // Monta o objeto perfeito para a tela ler sem quebrar
+        if (osData.equipamentos) {
+           osData.equipamentos.clientes = clienteInfo;
+           osData.equipamentos.tecnologias = tecInfo;
+        } else {
+           osData.equipamentos = { clientes: clienteInfo, tecnologias: tecInfo };
+        }
+
         setOs(osData);
 
+        // 🚀 PASSO 3: Busca a Empresa (Matriz/Inquilino)
         const tenantId = osData.tenant_id || 1;
         const { data: config } = await supabase
           .from('empresas_inquilinas')
@@ -58,6 +77,7 @@ export function OSPublicView() {
 
         if (config) setSystemConfig(config);
 
+        // Se veio para impressão automática
         if (window.location.search.includes('print=true')) {
             setTimeout(() => window.print(), 800);
         }
@@ -92,7 +112,7 @@ export function OSPublicView() {
   const clienteNome = os.equipamentos?.clientes?.nome_fantasia || os.equipamentos?.clientes?.razao_social || os.cliente_nome || 'Unidade Hospitalar';
   const clienteDoc = os.equipamentos?.clientes?.cnpj_cpf || 'Não informado';
   
-  // 🚀 NOME DO EQUIPAMENTO COMPLETO (Com Marca e Modelo)
+  // NOME DO EQUIPAMENTO COMPLETO (Com Marca e Modelo)
   const tec = os.equipamentos?.tecnologias;
   const nomeBase = tec?.nome || os.equipamentos?.nome || os.equipamento_nome || 'Equipamento Médico';
   const nomeEquipamento = tec?.fabricante && tec?.modelo ? `${nomeBase} (${tec.fabricante} - ${tec.modelo})` : nomeBase;
