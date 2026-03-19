@@ -27,8 +27,7 @@ export function OSPublicView() {
     if (!osUuid) return setLoading(false);
 
     try {
-      // 🚀 BUSCA BLINDADA (Erro 400 Resolvido)
-      // Ajustamos a busca para usar apenas as colunas que realmente existem após a arquitetura SaaS
+      // 🚀 BUSCA BLINDADA E SINTAXE CORRIGIDA
       const { data: osData, error: osError } = await supabase
         .from('ordens_servico')
         .select(`
@@ -36,7 +35,7 @@ export function OSPublicView() {
           equipamentos:equipamento_id (
             *,
             clientes:cliente_id (*),
-            tecnologias:tecnologia_id (nome, fabricante, modelo)
+            tecnologias (nome, fabricante, modelo)
           )
         `)
         .eq('id_publico', osUuid)
@@ -98,7 +97,7 @@ export function OSPublicView() {
   const nomeBase = tec?.nome || os.equipamentos?.nome || os.equipamento_nome || 'Equipamento Médico';
   const nomeEquipamento = tec?.fabricante && tec?.modelo ? `${nomeBase} (${tec.fabricante} - ${tec.modelo})` : nomeBase;
 
-  const rawLogoUrl = systemConfig?.logo_url;
+  const rawLogoUrl = systemConfig?.logo_url || systemConfig?.logotipo_url;
   const finalLogoUrl = rawLogoUrl ? `${getImageUrl(rawLogoUrl, 'logos')}?v=${new Date().getTime()}` : null;
 
   let fotos: string[] = [];
@@ -113,6 +112,7 @@ export function OSPublicView() {
   return (
     <div className="min-h-screen bg-[#F2F2F7] font-sans text-slate-900">
       
+      {/* BARRA SUPERIOR - MODO WEB */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-black/5 p-4 flex justify-between items-center px-6 md:px-10 print:hidden shadow-sm">
         <div className="flex items-center gap-3">
            {finalLogoUrl ? (
@@ -127,6 +127,7 @@ export function OSPublicView() {
         </button>
       </nav>
 
+      {/* CONTEÚDO - MODO WEB */}
       <main className="max-w-3xl mx-auto p-4 md:p-6 py-8 md:py-12 space-y-6 print:p-0 print:m-0 print:max-w-none">
         
         <div className="print:hidden space-y-8 animate-fadeIn">
@@ -193,9 +194,12 @@ export function OSPublicView() {
            </section>
         </div>
 
-        {/* LAYOUT DE IMPRESSÃO PDF */}
+        {/* ========================================================= */}
+        {/* 🚀 LAYOUT DE IMPRESSÃO "PDF AZUL" PADRÃO ENTERPRISE */}
+        {/* ========================================================= */}
         <div className="hidden print:block bg-white text-slate-900 w-full max-w-[210mm] mx-auto text-[11px] leading-tight">
             
+            {/* CABEÇALHO DA O.S. */}
             <div className="border-b-4 border-blue-900 pb-4 mb-6 flex justify-between items-end">
                 <div className="w-1/2">
                    {finalLogoUrl ? (
@@ -211,6 +215,7 @@ export function OSPublicView() {
                 </div>
             </div>
 
+            {/* BLOCO 1: CLIENTE E DATAS */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">1. DADOS DO CLIENTE E ATENDIMENTO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -237,6 +242,7 @@ export function OSPublicView() {
                 </table>
             </div>
 
+            {/* BLOCO 2: EQUIPAMENTO */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">2. DADOS DO EQUIPAMENTO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -263,6 +269,7 @@ export function OSPublicView() {
                 </table>
             </div>
 
+            {/* BLOCO 3: PROBLEMA E SOLUÇÃO */}
             <div className="mb-5">
                 <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-1">3. DETALHES TÉCNICOS DA INTERVENÇÃO</div>
                 <table className="w-full border-collapse text-[10px]">
@@ -279,6 +286,7 @@ export function OSPublicView() {
                 </table>
             </div>
 
+            {/* BLOCO 4: FOTOS SE HOUVER */}
             {fotosValidas.length > 0 && (
                 <div className="mb-5" style={{ pageBreakInside: 'avoid' }}>
                     <div className="bg-slate-100 border-l-4 border-blue-900 text-blue-900 font-black uppercase text-[10px] p-1.5 mb-2">4. EVIDÊNCIAS FOTOGRÁFICAS</div>
@@ -295,6 +303,7 @@ export function OSPublicView() {
                 </div>
             )}
 
+            {/* BLOCO 5: ASSINATURAS */}
             <div className="mt-16 flex justify-between gap-10 px-8" style={{ pageBreakInside: 'avoid' }}>
                 <div className="w-[45%] text-center border-t border-black pt-2">
                     <p className="font-black text-[10px] uppercase text-slate-800">Técnico Responsável</p>
