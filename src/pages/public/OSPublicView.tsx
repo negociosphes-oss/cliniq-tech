@@ -73,7 +73,7 @@ export function OSPublicView() {
 
         setOs(osData);
 
-        // Busca a configuração oficial (Para a Logo)
+        // Busca a configuração oficial (Para a Logo do Portal)
         let finalConfig: any = {};
         const { data: confData } = await supabase.from('configuracoes_empresa').select('*').order('id', { ascending: true }).limit(1).maybeSingle();
         if (confData) finalConfig = { ...confData };
@@ -121,7 +121,7 @@ export function OSPublicView() {
   const isCalibracao = (os.tipo || '').toUpperCase().includes('CALIBRAÇÃO');
   const temLaudo = (isTse || isCalibracao) && os.status === 'Concluída';
 
-  // 🚀 MÁGICA RESTAURADA: Gera a OS Azul Oficial
+  // 🚀 MÁGICA RESTAURADA E ALINHADA COM O SISTEMA INTERNO
   const handleDownloadOS = async () => {
       setIsDownloadingOs(true);
       try {
@@ -151,8 +151,14 @@ export function OSPublicView() {
             apontamentos: aptData || []
          };
          
-         // 5. Manda imprimir no Layout Azul!
-         await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig || {});
+         // 5. Configura a Logo para passar pro RelatorioTecnicoTemplate (Garante a url convertida do Banco)
+         const configComLogoTratada = { ...systemConfig };
+         if (finalLogoUrl) {
+             configComLogoTratada.logo_url = finalLogoUrl;
+         }
+
+         // 6. Manda imprimir no Layout Azul com todas as informações!
+         await imprimirRelatorio(fullData, fullData.apontamentos, configComLogoTratada);
 
       } catch (err) {
          console.error(err);
