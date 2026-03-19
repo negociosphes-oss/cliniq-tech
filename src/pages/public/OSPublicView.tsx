@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   Download, Wrench, ShieldCheck, 
-  Building2, AlertTriangle, FileText, Zap, FileBadge, Loader2
+  Building2, AlertTriangle, FileText, Zap, FileBadge, Loader2, CheckCircle2 
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { pdf } from '@react-pdf/renderer';
 
-// 🚀 IMPORTA SEUS MOTORES OFICIAIS DE PDF
+// Motores de PDF
 import { TseCertificadoService } from '../../services/TseCertificadoService';
 import { TseCertificadoPDF } from '../metrologia/TseCertificadoPDF';
 import { CertificadoService } from '../../services/CertificadoService';
@@ -118,19 +118,13 @@ export function OSPublicView() {
   const isCalibracao = (os.tipo || '').toUpperCase().includes('CALIBRAÇÃO');
   const temLaudo = (isTse || isCalibracao) && os.status === 'Concluída';
 
-  // ============================================================================
-  // 🚀 AÇÕES DE DOWNLOAD LIGADAS AO MOTOR INTERNO DO ATLASUM
-  // ============================================================================
-  
   const handleDownloadOS = async () => {
       setIsDownloadingOs(true);
       try {
-         // Monta o objeto completo simulando a busca interna
          const osDataCompleta = { ...os };
          osDataCompleta.equipamento = { ...os.equipamentos };
          osDataCompleta.cliente = { ...os.equipamentos?.clientes };
          
-         // Chama a função exata do seu RelatorioOSService
          RelatorioOSService.imprimirFichaOS([osDataCompleta], systemConfig || {});
       } catch (err) {
          console.error(err);
@@ -167,7 +161,6 @@ export function OSPublicView() {
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900 pb-20">
       
-      {/* HEADER DO PORTAL */}
       <nav className="bg-white border-b border-slate-200 p-4 shadow-sm flex justify-center sm:justify-between items-center px-6 md:px-10">
         <div className="flex items-center gap-4">
            {finalLogoUrl && (
@@ -177,7 +170,6 @@ export function OSPublicView() {
         </div>
       </nav>
 
-      {/* ÁREA CENTRAL DO PORTAL */}
       <main className="max-w-2xl mx-auto p-4 md:p-6 mt-8 animate-fadeIn">
          
          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-200/60 mb-8">
@@ -206,12 +198,10 @@ export function OSPublicView() {
             </div>
          </div>
 
-         {/* LISTA DE DOCUMENTOS DISPONÍVEIS PARA DOWNLOAD */}
          <h3 className="font-black text-slate-800 text-lg mb-4 px-2">Documentos Disponíveis</h3>
          
          <div className="space-y-4">
             
-            {/* CARD 1: RELATÓRIO DA O.S. (SEMPRE EXISTE) */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-indigo-300 transition-all">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center shrink-0"><FileText size={24}/></div>
@@ -226,7 +216,6 @@ export function OSPublicView() {
                 </button>
             </div>
 
-            {/* CARD 2: LAUDO TSE OU CALIBRAÇÃO (SÓ APARECE SE TIVER) */}
             {temLaudo && (
                <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-emerald-400 transition-all relative overflow-hidden">
                    <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
@@ -241,7 +230,7 @@ export function OSPublicView() {
                    </div>
                    <button onClick={handleDownloadLaudo} disabled={isDownloadingLaudo} className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50">
                        {isDownloadingLaudo ? <Loader2 size={16} className="animate-spin"/> : <Download size={16}/>}
-                       {isDownloadingLaudo ? 'Assinando...' : 'Baixar PDF'}
+                       {isDownloadingLaudo ? 'Acessando...' : 'Baixar Laudo'}
                    </button>
                </div>
             )}

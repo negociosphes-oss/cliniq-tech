@@ -2,7 +2,7 @@
 
 export const RelatorioOSService = {
     
-    // 🚀 MOTOR EXCEL (CSV Profissional com BOM)
+    // MOTOR EXCEL
     exportarExcel: (ordens: any[]) => {
         if (!ordens || ordens.length === 0) return alert('Não há dados para exportar.');
 
@@ -36,9 +36,8 @@ export const RelatorioOSService = {
         link.click();
     },
 
-    // 🚀 MOTOR PDF 1: RELATÓRIO GERENCIAL (Dashboard em Lista)
+    // MOTOR PDF 1: RELATÓRIO GERENCIAL
     imprimirPDF: (ordens: any[], configEmpresa: any) => {
-        // ... (MANTIVE O SEU CÓDIGO ORIGINAL DE RELATÓRIO AQUI PARA VOCÊ NÃO PERDER) ...
         if (!ordens || ordens.length === 0) return alert('Não há dados para imprimir.');
         const printWindow = window.open('', '_blank');
         if (!printWindow) return alert("Por favor, permita pop-ups neste site.");
@@ -46,7 +45,6 @@ export const RelatorioOSService = {
         const total = ordens.length;
         const concluidas = ordens.filter(o => (o.status || '').toLowerCase() === 'concluída').length;
         const abertas = ordens.filter(o => (o.status || '').toLowerCase() === 'aberta' || (o.status || '').toLowerCase() === 'em execução').length;
-        const aguardando = ordens.filter(o => (o.status || '').toLowerCase() === 'aguardando peça' || (o.status || '').toLowerCase() === 'aguardando aprovação').length;
 
         const html = `
             <!DOCTYPE html>
@@ -76,18 +74,23 @@ export const RelatorioOSService = {
         setTimeout(() => { printWindow.print(); }, 800);
     },
 
-    // 🚀 MOTOR PDF 2: FICHA DA ORDEM DE SERVIÇO (INDIVIDUAL E EM LOTE)
+    // 🚀 MOTOR PDF 2: FICHA DA ORDEM DE SERVIÇO (CORREÇÃO DA LOGO APLICADA)
     imprimirFichaOS: (ordens: any[], configEmpresa: any) => {
         if (!ordens || ordens.length === 0) return alert('Nenhuma O.S. selecionada para impressão.');
         
         const printWindow = window.open('', '_blank');
         if (!printWindow) return alert("Por favor, permita pop-ups neste site para gerar a O.S.");
 
-        const logoHtml = configEmpresa?.logo_url 
-            ? `<img src="${configEmpresa.logo_url}" style="max-height: 60px; max-width: 200px; object-fit: contain;" />` 
+        // TRATAMENTO BLINDADO DE LOGO
+        let urlLogoFinal = configEmpresa?.logo_url || configEmpresa?.logotipo_url;
+        if (urlLogoFinal && !urlLogoFinal.startsWith('http')) {
+            urlLogoFinal = `https://dnimxqxgtvltgvrrabur.supabase.co/storage/v1/object/public/app-assets/logos/${urlLogoFinal}`;
+        }
+
+        const logoHtml = urlLogoFinal 
+            ? `<img src="${urlLogoFinal}" onerror="this.style.display='none'" style="max-height: 60px; max-width: 200px; object-fit: contain;" />` 
             : `<h2 style="margin:0; color:#1e3a8a; font-weight:900;">${configEmpresa?.nome_fantasia || 'ATLAS SYSTEM'}</h2>`;
 
-        // Gera uma folha de O.S. para CADA ordem selecionada (com quebra de página)
         const paginasHtml = ordens.map((os, index) => {
             const dataAbertura = os.created_at ? new Date(os.created_at).toLocaleString('pt-BR') : '-';
             const dataFechamento = os.data_fechamento ? new Date(os.data_fechamento).toLocaleString('pt-BR') : '-';
@@ -128,7 +131,7 @@ export const RelatorioOSService = {
                                 <td style="width: 50%;"><strong>Fabricante/Modelo:</strong> ${os.equipamento?.fabricante || '-'} / ${os.equipamento?.modelo || '-'}</td>
                             </tr>
                             <tr>
-                                <td><strong>Nº de Série:</strong> ${os.equipamento?.n_serie || '-'}</td>
+                                <td><strong>Nº de Série:</strong> ${os.equipamento?.numero_serie || os.equipamento?.n_serie || '-'}</td>
                                 <td><strong>TAG / Patrimônio:</strong> ${os.equipamento?.tag || '-'} / ${os.equipamento?.patrimonio || '-'}</td>
                             </tr>
                         </table>
@@ -157,7 +160,7 @@ export const RelatorioOSService = {
                             <tr>
                                 <td>
                                     <strong>Descrição dos Serviços:</strong><br/>
-                                    <div style="margin-top:6px; min-height:100px; color:#334155;">${os.laudo_tecnico || 'Nenhum laudo técnico preenchido até o momento.'}</div>
+                                    <div style="margin-top:6px; min-height:100px; color:#334155;">${os.laudo_tecnico || os.solucao_aplicada || 'Nenhum laudo técnico preenchido até o momento.'}</div>
                                 </td>
                             </tr>
                         </table>
@@ -167,7 +170,7 @@ export const RelatorioOSService = {
                         <div class="sign-box">
                             <div class="sign-line"></div>
                             <strong>Assinatura do Técnico</strong><br/>
-                            <span style="font-size:10px; color:#64748b;">${os.tecnico?.nome || 'Técnico Responsável'}</span>
+                            <span style="font-size:10px; color:#64748b;">${os.tecnico?.nome || os.tecnico_nome || 'Técnico Responsável'}</span>
                         </div>
                         <div class="sign-box">
                             <div class="sign-line"></div>
