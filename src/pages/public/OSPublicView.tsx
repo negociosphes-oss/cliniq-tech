@@ -12,7 +12,7 @@ import { TseCertificadoService } from '../../services/TseCertificadoService';
 import { TseCertificadoPDF } from '../metrologia/TseCertificadoPDF';
 import { CertificadoService } from '../../services/CertificadoService';
 import { MetrologiaCertificadoPDF } from '../../documents/MetrologiaCertificadoPDF';
-import { RelatorioOSService } from '../../services/RelatorioOSService';
+import { imprimirRelatorio } from './reports/RelatorioTecnicoTemplate';
 
 export function OSPublicView() {
   const [os, setOs] = useState<any>(null);
@@ -71,14 +71,15 @@ export function OSPublicView() {
 
         setOs(osData);
 
-        const tenantId = osData.tenant_id || 1;
-        const { data: config } = await supabase
-          .from('empresas_inquilinas')
-          .select('*')
-          .eq('id', tenantId)
-          .maybeSingle();
+        // 🚀 CORREÇÃO DA LOGO: Busca os dados de configuração IGUAL ao sistema interno
+        let finalConfig: any = {};
+        const { data: confData } = await supabase.from('configuracoes_empresa').select('*').order('id', { ascending: true }).limit(1).maybeSingle();
+        if (confData) finalConfig = { ...confData };
 
-        if (config) setSystemConfig(config);
+        const { data: tenants } = await supabase.from('empresas_inquilinas').select('*').limit(1).maybeSingle();
+        if (tenants) finalConfig = { ...tenants, ...finalConfig };
+
+        setSystemConfig(finalConfig);
       }
     } catch (err) {
       console.error("Erro ao carregar dados da OS Pública:", err);
@@ -121,11 +122,31 @@ export function OSPublicView() {
   const handleDownloadOS = async () => {
       setIsDownloadingOs(true);
       try {
-         const osDataCompleta = { ...os };
-         osDataCompleta.equipamento = { ...os.equipamentos };
-         osDataCompleta.cliente = { ...os.equipamentos?.clientes };
+         const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', os.id).order('data_inicio');
+         const { data: pecasData } = await supabase.from('estoque_movimentacoes').select('*, estoque_itens(*)').eq('os_id', os.id).eq('tipo', 'SAIDA');
          
-         RelatorioOSService.imprimirFichaOS([osDataCompleta], systemConfig || {});
+         let checklistData = null;
+         const { data: chkExec } = await supabase.from('os_checklists_execucao').select('*').eq('ordem_servico_id', os.id).maybeSingle();
+         if (chkExec && chkExec.checklist_id) {
+             // 🚀 CORREÇÃO DO NOME DA TABELA DE CHECKLIST
+             const { data: chkPadrao } = await supabase.from('checklists_biblioteca').select('*').eq('id', chkExec.checklist_id).maybeSingle();
+             if (chkPadrao) {
+                 checklistData = { perguntas: chkPadrao.itens_configuracao || chkPadrao.perguntas, respostas: chkExec.respostas || [] };
+             }
+         }
+
+         const fullData = {
+            ...os,
+            equipamento: { ...os.equipamentos },
+            cliente: { ...os.equipamentos?.clientes },
+            pecas: pecasData || [],
+            checklistData: checklistData,
+            apontamentos: aptData || []
+         };
+         
+         // CHAMA SEU MOTOR INTERNO OFICIAL E PASSA A CONFIGURAÇÃO CORRETA COM A LOGO
+         await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig || {});
+
       } catch (err) {
          console.error(err);
          alert("Ocorreu um erro ao gerar a impressão. Tente novamente.");
@@ -160,7 +181,6 @@ export function OSPublicView() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-900 pb-20">
-      
       <nav className="bg-white border-b border-slate-200 p-4 shadow-sm flex justify-center sm:justify-between items-center px-6 md:px-10">
         <div className="flex items-center gap-4">
            {finalLogoUrl && (
@@ -171,7 +191,6 @@ export function OSPublicView() {
       </nav>
 
       <main className="max-w-2xl mx-auto p-4 md:p-6 mt-8 animate-fadeIn">
-         
          <div className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-200/60 mb-8">
             <h1 className="text-2xl font-black text-slate-800 tracking-tight text-center mb-6">Portal de Documentos Técnicos</h1>
             
@@ -199,7 +218,6 @@ export function OSPublicView() {
          </div>
 
          <h3 className="font-black text-slate-800 text-lg mb-4 px-2">Documentos Disponíveis</h3>
-         
          <div className="space-y-4">
             
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:border-indigo-300 transition-all">
@@ -212,7 +230,7 @@ export function OSPublicView() {
                 </div>
                 <button onClick={handleDownloadOS} disabled={isDownloadingOs} className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50">
                     {isDownloadingOs ? <Loader2 size={16} className="animate-spin"/> : <Download size={16}/>}
-                    {isDownloadingOs ? 'Gerando...' : 'Baixar PDF'}
+                    {isDownloadingOs ? 'Gerando...' : 'Baixar OS'}
                 </button>
             </div>
 
@@ -236,7 +254,6 @@ export function OSPublicView() {
             )}
 
          </div>
-
       </main>
     </div>
   );
