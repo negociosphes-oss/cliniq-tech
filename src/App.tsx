@@ -9,6 +9,7 @@ import { ThemeService } from './services/ThemeService'
 // --- COMPONENTES ---
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './pages/ordem-servico/components/ErrorBoundary'
+import { HelpWidget } from './components/HelpWidget' // 🚀 COMPONENTE DE AJUDA INJETADO
 
 // --- PÁGINAS DO SISTEMA ---
 import { DashboardPage } from './pages/dashboard/DashboardPage'
@@ -342,7 +343,7 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
             </button>
         </header>
         
-        <main className="flex-1 overflow-y-auto pt-16 md:pt-0 pb-10">
+        <main className="flex-1 overflow-y-auto pt-16 md:pt-0 pb-10 relative">
             <ErrorBoundary>
                 <Routes>
                     <Route path="/" element={<Navigate to="/painel" replace />} />
@@ -370,6 +371,10 @@ function MainLayout({ user, tenant, onLogout }: { user: Usuario, tenant: any, on
         </main>
 
         {toast && <Toast message={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+        
+        {/* 🚀 O BOTÃO DE SUPORTE FLUTUANTE QUE ADICIONAMOS */}
+        <HelpWidget />
+        
       </div>
     </div>
   )
@@ -379,7 +384,7 @@ export default function App() {
     const [tenant, setTenant] = useState<any>(null);
     const [loadingTenant, setLoadingTenant] = useState(true);
     
-    // 🚀 A MÁGICA ACONTECE AQUI: Carrega o usuário da memória local antes de renderizar
+    // 🚀 Carrega o usuário da memória local para manter a sessão (Login Persistente)
     const [user, setUser] = useState<Usuario | null>(() => {
         const savedUser = localStorage.getItem('@atlasum_user');
         if (savedUser) {
@@ -478,13 +483,11 @@ export default function App() {
             <Routes>
                 <Route path="/" element={user ? <Navigate to="/painel" replace /> : <LandingPage />} />
                 
-                {/* 🚀 SALVA O USUÁRIO NA MEMÓRIA AO LOGAR */}
                 <Route path="/login" element={user ? <Navigate to="/painel" replace /> : <Login tenant={tenant} onLoginSuccess={(u) => {
                     localStorage.setItem('@atlasum_user', JSON.stringify(u));
                     setUser(u);
                 }} />} />
                 
-                {/* 🚀 APAGA O USUÁRIO DA MEMÓRIA AO DESLOGAR */}
                 <Route path="/*" element={user ? <MainLayout user={user} tenant={tenant} onLogout={() => {
                     localStorage.removeItem('@atlasum_user');
                     setUser(null);

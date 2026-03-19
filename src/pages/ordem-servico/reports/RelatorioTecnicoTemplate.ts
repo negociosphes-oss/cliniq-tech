@@ -2,7 +2,6 @@
  * ============================================================================
  * MOTOR DE RELATÓRIO TÉCNICO OS - TEMA VISUAL NANO (AZUL & VERDE)
  * ============================================================================
- * Auditoria: Injeção de Status, Data de Fechamento e Valores Financeiros.
  */
 
 const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
@@ -25,7 +24,6 @@ const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
   const equipSerie = eq?.numero_serie || eq?.n_serie || os?.equipamento_serie || '-';
   const clienteNome = cli?.nome_fantasia || cli?.razao_social || cli?.nome || 'Unidade não identificada';
 
-  // 🚀 DADOS DE STATUS E DATAS
   const dataAbertura = os?.created_at || os?.data_abertura ? new Date(os.created_at || os.data_abertura).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
   const dataFechamento = os?.data_fechamento ? new Date(os.data_fechamento).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
   const statusOS = os?.status || 'Pendente';
@@ -38,7 +36,6 @@ const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
 
   let sectionCounter = 3;
 
-  // 🚀 TABELA DE PEÇAS COM VALORES FINANCEIROS
   let pecasHtml = '';
   if (pecas && pecas.length > 0) {
     let valorTotalPecas = 0;
@@ -88,20 +85,16 @@ const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
     sectionCounter++;
   }
 
-  // 🚀 TABELA DE CHECKLIST (AGORA COM OS DADOS CARREGADOS)
   let checklistHtml = '';
   if (checklistData && checklistData.perguntas && checklistData.perguntas.length > 0) {
     const rows = checklistData.perguntas.map((p: any, i: number) => {
-      // Procura a resposta no array ou usa 'N/A'
       let respStr = 'N/A';
       if (Array.isArray(checklistData.respostas)) {
          const respObj = checklistData.respostas.find((r:any) => r.perguntaIndex === i || r.pergunta_id === p.id);
          if (respObj) respStr = respObj.resposta;
          else if (typeof checklistData.respostas[i] === 'string') respStr = checklistData.respostas[i];
       }
-      
       const corResposta = respStr === 'Conforme' || respStr === 'OK' ? 'color:#16a34a;' : (respStr === 'Não Conforme' || respStr === 'Falha' ? 'color:#dc2626;' : 'color:#64748b;');
-
       return `<tr class="tr-stripe"><td style="width:80%">${p.texto}</td><td style="text-align:center; font-weight:900; ${corResposta}">${respStr}</td></tr>`;
     }).join('');
     
@@ -164,7 +157,7 @@ const gerarCorpoDaOS = (arg1: any, arg2?: any, arg3?: any) => {
     <div class="os-page">
       <div class="header-card">
         <div class="logo-container">
-          ${logoUrl ? `<img src="${logoUrl}" />` : '<div style="color:#000; font-weight:bold">ATLAS</div>'}
+          ${logoUrl ? `<img src="${logoUrl}" onerror="this.style.display='none'" />` : '<div style="color:#000; font-weight:bold">ATLAS</div>'}
         </div>
         <div class="header-titles">
           <h1>${nomeEmpresa || 'ATLAS SYSTEM MEDICAL'}</h1>
@@ -337,17 +330,19 @@ const styles = `
   </style>
 `;
 
-export const imprimirRelatorio = (arg1: any, arg2?: any, arg3?: any) => {
-  const win = window.open('', '_blank');
+export const imprimirRelatorio = (arg1: any, arg2?: any, arg3?: any, existingWin?: any) => {
+  const win = existingWin || window.open('', '_blank');
   if (!win) return;
   const os = arg1.os || arg1;
+  win.document.open();
   win.document.write(`<html><head><title>OS #${os.id}</title>${styles}</head><body>${gerarCorpoDaOS(arg1, arg2, arg3)}<script>setTimeout(()=>window.print(),800)</script></body></html>`);
   win.document.close();
 };
 
-export const imprimirRelatoriosEmLote = (lista: any[], config?: any) => {
-  const win = window.open('', '_blank');
+export const imprimirRelatoriosEmLote = (lista: any[], config?: any, existingWin?: any) => {
+  const win = existingWin || window.open('', '_blank');
   if (!win) return;
+  win.document.open();
   win.document.write(`<html><head><title>Lote Atlas</title>${styles}</head><body>`);
   lista.forEach(d => win.document.write(gerarCorpoDaOS(d, d.apontamentos, config)));
   win.document.write(`<script>setTimeout(()=>window.print(),1500)</script></body></html>`);

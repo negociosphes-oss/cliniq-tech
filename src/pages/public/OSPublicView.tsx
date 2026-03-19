@@ -13,7 +13,7 @@ import { TseCertificadoPDF } from '../metrologia/TseCertificadoPDF';
 import { CertificadoService } from '../../services/CertificadoService';
 import { MetrologiaCertificadoPDF } from '../../documents/MetrologiaCertificadoPDF';
 
-// 🚀 O SEU MOTOR OFICIAL DE O.S. AZUL (Caminho Corrigido!)
+// 🚀 O SEU MOTOR OFICIAL DE O.S. AZUL
 import { imprimirRelatorio } from '../ordem-servico/reports/RelatorioTecnicoTemplate';
 
 export function OSPublicView() {
@@ -121,42 +121,59 @@ export function OSPublicView() {
   const isCalibracao = (os.tipo || '').toUpperCase().includes('CALIBRAÇÃO');
   const temLaudo = (isTse || isCalibracao) && os.status === 'Concluída';
 
-  // 🚀 MÁGICA FINAL: Monta o pacotão exato do painel interno
+  // 🚀 MÁGICA CELULAR: Abre a janela na mesma hora do clique para não ser bloqueada!
   const handleDownloadOS = async () => {
+      // 1. ABRE A ABA NO ATO DO CLIQUE
+      const printWindow = window.open('', '_blank');
+      
+      if (!printWindow) {
+          alert("Seu navegador bloqueou a abertura do documento. Por favor, permita pop-ups para este site.");
+          return;
+      }
+
+      // 2. COLOCA UMA TELA DE CARREGAMENTO NA NOVA ABA
+      printWindow.document.write(`
+          <html><head><title>Gerando Documento...</title></head>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; background: #f8fafc; color: #334155; margin: 0;">
+              <h2 style="margin-bottom: 8px;">Construindo seu documento...</h2>
+              <p style="color: #64748b; font-size: 14px;">Isso pode levar alguns segundos, não feche esta página.</p>
+          </body></html>
+      `);
+
       setIsDownloadingOs(true);
       try {
-         // 1. Busca os Apontamentos (Mão de Obra)
-         const { data: aptData } = await supabase.from('apontamentos').select('*').eq('os_id', os.id).order('data_inicio');
-         
-         // 2. Busca as Peças e Materiais
-         const { data: pecasData } = await supabase.from('estoque_movimentacoes').select('*, estoque_itens(*)').eq('os_id', os.id).eq('tipo', 'SAIDA');
-         
-         // 3. Busca o Checklist (se houver)
+         // 3. AGORA SIM BUSCA OS DADOS NO BANCO
+         const [apt, pec, chk] = await Promise.all([
+            supabase.from('apontamentos').select('*').eq('os_id', os.id).order('data_inicio'),
+            supabase.from('estoque_movimentacoes').select('*, estoque_itens(*)').eq('os_id', os.id).eq('tipo', 'SAIDA'),
+            supabase.from('os_checklists_execucao').select('*').eq('ordem_servico_id', os.id).maybeSingle()
+         ]);
+
          let checklistData = null;
-         const { data: chkExec } = await supabase.from('os_checklists_execucao').select('*').eq('ordem_servico_id', os.id).maybeSingle();
-         if (chkExec && chkExec.checklist_id) {
-             const { data: chkPadrao } = await supabase.from('checklists_biblioteca').select('*').eq('id', chkExec.checklist_id).maybeSingle();
-             if (chkPadrao) {
-                 checklistData = { perguntas: chkPadrao.itens_configuracao || chkPadrao.perguntas, respostas: chkExec.respostas || [] };
-             }
+         if (chk.data?.checklist_id) {
+             const { data: bib } = await supabase.from('checklists_biblioteca').select('*').eq('id', chk.data.checklist_id).maybeSingle();
+             if (bib) checklistData = { perguntas: bib.itens_configuracao || bib.perguntas, respostas: chk.data.respostas || [] };
          }
 
-         // 4. Monta o pacote e forçamos a inserção da Logo correta do banco!
+         const configFinal = { ...systemConfig };
+         if (finalLogoUrl) configFinal.logo_url = finalLogoUrl;
+
          const fullData = {
             ...os,
             equipamento: { ...os.equipamentos },
             cliente: { ...os.equipamentos?.clientes },
-            pecas: pecasData || [],
-            checklistData: checklistData,
-            apontamentos: aptData || [],
-            logoUrl: finalLogoUrl // Força o template a puxar a logo carregada!
+            pecas: pec.data || [],
+            checklistData,
+            apontamentos: apt.data || [],
+            logoUrl: finalLogoUrl
          };
          
-         // 5. Manda imprimir no Layout Azul!
-         await imprimirRelatorio(fullData, fullData.apontamentos, systemConfig || {});
+         // 4. INJETA O PDF NA ABA QUE JÁ ESTÁ ABERTA (printWindow)!
+         await imprimirRelatorio(fullData, fullData.apontamentos, configFinal, printWindow);
 
       } catch (err) {
          console.error(err);
+         printWindow.close(); // Se der erro, fecha a aba que criamos
          alert("Ocorreu um erro ao gerar a impressão. Tente novamente.");
       } finally {
          setIsDownloadingOs(false);

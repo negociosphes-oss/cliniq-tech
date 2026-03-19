@@ -6,17 +6,18 @@ import { AuditLogsList } from './components/AuditLogsList';
 import { TiposOSList } from './components/TiposOSList'; 
 import { PermissoesCargos } from './components/PermissoesCargos';
 import { MeuPlano } from './components/MeuPlano';
+import { NotificacoesConfig } from './components/NotificacoesConfig'; // 🚀 AJUSTE 1: IMPORT ADICIONADO
 
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<'empresa' | 'tiposos' | 'usuarios' | 'permissoes' | 'auditoria' | 'notificacoes' | 'plano'>('empresa');
 
   return (
-    <div className="min-h-screen p-4 md:p-8 animate-fadeIn max-w-[1600px] mx-auto pb-24">
+    <div className="min-h-screen p-4 md:p-8 animate-fadeIn max-w-[1600px] mx-auto pb-24 overflow-x-hidden">
       
       {/* HEADER DA PÁGINA */}
-      <div className="mb-8 pl-2">
+      <div className="mb-6 md:mb-8 pl-2">
         <h2 className="text-2xl md:text-3xl font-black text-theme-main tracking-tight flex items-center gap-3">
-            <span className="p-3 bg-theme-card border border-theme rounded-2xl shadow-sm">
+            <span className="p-3 bg-theme-card border border-theme rounded-2xl shadow-sm shrink-0">
                 <Settings size={24} strokeWidth={1.5} className="animate-spin-slow"/>
             </span>
             Painel de Controle
@@ -24,108 +25,77 @@ export function AdminPage() {
         <p className="text-theme-muted font-medium mt-2 ml-1 text-sm md:text-base">Gerencie as configurações globais, acessos e segurança da plataforma.</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
+      <div className="flex flex-col lg:flex-row gap-6 md:gap-8 items-start w-full">
         
-        {/* 🚀 MENU LATERAL RESPONSIVO (Vira Carrossel no Celular) */}
+        {/* MENU LATERAL RESPONSIVO */}
         <div className="w-full lg:w-72 shrink-0 lg:sticky lg:top-24">
-            
-            {/* O container flex muda para linha rolável no mobile e coluna fixa no desktop */}
-            <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-6 lg:gap-8 pb-4 lg:pb-0 custom-scrollbar snap-x">
+            <div className="flex lg:flex-col overflow-x-auto lg:overflow-visible gap-3 lg:gap-8 pb-4 lg:pb-0 custom-scrollbar w-full">
                 
-                {/* Categoria: Geral */}
-                <div className="min-w-[280px] lg:min-w-0 snap-center shrink-0">
-                    <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">Geral</h4>
-                    <div className="space-y-1">
-                        <MenuButton 
-                            active={activeTab === 'empresa'} 
-                            onClick={() => setActiveTab('empresa')} 
-                            icon={<Building size={18} strokeWidth={1.5}/>} 
-                            title="Identidade" 
-                            subtitle="Logotipo & Dados"
-                        />
-                        <MenuButton 
-                            active={activeTab === 'tiposos'} 
-                            onClick={() => setActiveTab('tiposos')} 
-                            icon={<ListChecks size={18} strokeWidth={1.5}/>} 
-                            title="Tipos de O.S." 
-                            subtitle="Regras & Metrologia"
-                        />
-                        <MenuButton 
-                            active={activeTab === 'notificacoes'} 
-                            onClick={() => setActiveTab('notificacoes')} 
-                            icon={<Bell size={18} strokeWidth={1.5}/>} 
-                            title="Notificações" 
-                            subtitle="Alertas Automáticos"
-                        />
-                    </div>
+                <div className="flex lg:flex-col gap-3 lg:gap-1 shrink-0 lg:w-full">
+                    <h4 className="hidden lg:block text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-2 px-4 opacity-70 mt-2">Geral</h4>
+                    <MenuButton 
+                        active={activeTab === 'empresa'} 
+                        onClick={() => setActiveTab('empresa')} 
+                        icon={<Building size={18} strokeWidth={1.5}/>} 
+                        title="Identidade" 
+                        subtitle="Logotipo & Dados"
+                    />
+                    <MenuButton 
+                        active={activeTab === 'tiposos'} 
+                        onClick={() => setActiveTab('tiposos')} 
+                        icon={<ListChecks size={18} strokeWidth={1.5}/>} 
+                        title="Tipos de O.S." 
+                        subtitle="Regras & Metrologia"
+                    />
+                    <MenuButton 
+                        active={activeTab === 'notificacoes'} 
+                        onClick={() => setActiveTab('notificacoes')} 
+                        icon={<Bell size={18} strokeWidth={1.5}/>} 
+                        title="Notificações" 
+                        subtitle="Alertas Automáticos"
+                    />
                 </div>
 
-                {/* Categoria: Assinatura & Uso */}
-                <div className="min-w-[280px] lg:min-w-0 snap-center shrink-0">
-                    <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">Licenciamento</h4>
-                    <div className="space-y-1">
-                        <MenuButton 
-                            active={activeTab === 'plano'} 
-                            onClick={() => setActiveTab('plano')} 
-                            icon={<CreditCard size={18} strokeWidth={1.5}/>} 
-                            title="Meu Plano SaaS" 
-                            subtitle="Faturas & Limites"
-                        />
-                    </div>
+                <div className="flex lg:flex-col gap-3 lg:gap-1 shrink-0 lg:w-full">
+                    <h4 className="hidden lg:block text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-2 px-4 opacity-70 lg:mt-4">Licenciamento</h4>
+                    <MenuButton 
+                        active={activeTab === 'plano'} 
+                        onClick={() => setActiveTab('plano')} 
+                        icon={<CreditCard size={18} strokeWidth={1.5}/>} 
+                        title="Meu Plano SaaS" 
+                        subtitle="Faturas & Limites"
+                    />
                 </div>
 
-                {/* Categoria: Acesso & Segurança */}
-                <div className="min-w-[280px] lg:min-w-0 snap-center shrink-0">
-                    <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">Security</h4>
-                    <div className="space-y-1">
-                        <MenuButton 
-                            active={activeTab === 'usuarios'} 
-                            onClick={() => setActiveTab('usuarios')} 
-                            icon={<Users size={18} strokeWidth={1.5}/>} 
-                            title="Time & Acessos" 
-                            subtitle="Gestão de Usuários"
-                        />
-                        <MenuButton 
-                            active={activeTab === 'permissoes'} 
-                            onClick={() => setActiveTab('permissoes')} 
-                            icon={<Lock size={18} strokeWidth={1.5}/>} 
-                            title="Matriz de Acessos" 
-                            subtitle="Permissões por Cargo"
-                        />
-                        <MenuButton 
-                            active={activeTab === 'auditoria'} 
-                            onClick={() => setActiveTab('auditoria')} 
-                            icon={<ShieldCheck size={18} strokeWidth={1.5}/>} 
-                            title="Auditoria (Logs)" 
-                            subtitle="Rastreabilidade Total"
-                        />
-                    </div>
+                <div className="flex lg:flex-col gap-3 lg:gap-1 shrink-0 lg:w-full pr-4 lg:pr-0">
+                    <h4 className="hidden lg:block text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-2 px-4 opacity-70 lg:mt-4">Security</h4>
+                    <MenuButton 
+                        active={activeTab === 'usuarios'} 
+                        onClick={() => setActiveTab('usuarios')} 
+                        icon={<Users size={18} strokeWidth={1.5}/>} 
+                        title="Time & Acessos" 
+                        subtitle="Gestão de Usuários"
+                    />
+                    <MenuButton 
+                        active={activeTab === 'permissoes'} 
+                        onClick={() => setActiveTab('permissoes')} 
+                        icon={<Lock size={18} strokeWidth={1.5}/>} 
+                        title="Matriz de Acessos" 
+                        subtitle="Permissões por Cargo"
+                    />
+                    <MenuButton 
+                        active={activeTab === 'auditoria'} 
+                        onClick={() => setActiveTab('auditoria')} 
+                        icon={<ShieldCheck size={18} strokeWidth={1.5}/>} 
+                        title="Auditoria (Logs)" 
+                        subtitle="Rastreabilidade Total"
+                    />
                 </div>
-
-                {/* Categoria: Sistema (Disabled) */}
-                <div className="min-w-[280px] lg:min-w-0 snap-center shrink-0">
-                    <h4 className="text-[10px] font-black text-theme-muted uppercase tracking-[0.2em] mb-3 px-4 opacity-70">System</h4>
-                    <div className="space-y-1 opacity-50 pointer-events-none grayscale">
-                        <MenuButton 
-                            onClick={() => {}} 
-                            icon={<HardDrive size={18} strokeWidth={1.5}/>} 
-                            title="Backup & Data" 
-                            subtitle="Exportação Segura"
-                        />
-                        <MenuButton 
-                            onClick={() => {}} 
-                            icon={<Key size={18} strokeWidth={1.5}/>} 
-                            title="API Keys" 
-                            subtitle="Integrações ERP"
-                        />
-                    </div>
-                </div>
-
             </div>
         </div>
 
         {/* ÁREA DE CONTEÚDO DINÂMICO */}
-        <div className="flex-1 w-full min-w-0">
+        <div className="flex-1 w-full min-w-0 overflow-x-hidden">
             {activeTab === 'empresa' && <ConfigGeral />}
             {activeTab === 'tiposos' && <TiposOSList />}
             {activeTab === 'plano' && <MeuPlano />}
@@ -133,17 +103,8 @@ export function AdminPage() {
             {activeTab === 'permissoes' && <PermissoesCargos />}
             {activeTab === 'auditoria' && <AuditLogsList />}
             
-            {activeTab === 'notificacoes' && (
-                <div className="bg-theme-card p-6 md:p-12 rounded-[2.5rem] border border-theme text-center shadow-lg">
-                    <div className="w-20 h-20 bg-theme-page rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                        <Bell size={40} className="text-theme-muted"/>
-                    </div>
-                    <h3 className="text-2xl font-black text-theme-main tracking-tight">Central de Alertas</h3>
-                    <p className="text-theme-muted mt-2 max-w-md mx-auto font-medium">
-                        Em breve, você poderá configurar regras para receber avisos sobre calibrações vencidas diretamente no seu WhatsApp.
-                    </p>
-                </div>
-            )}
+            {/* 🚀 AJUSTE 2: COMPONENTE REAL EM VEZ DO TEXTO "EM BREVE" */}
+            {activeTab === 'notificacoes' && <NotificacoesConfig />}
         </div>
       </div>
     </div>
@@ -153,17 +114,17 @@ export function AdminPage() {
 const MenuButton = ({ active, onClick, icon, title, subtitle }: any) => (
     <button 
         onClick={onClick}
-        className={`w-full text-left p-3 pl-4 rounded-2xl flex items-center gap-4 transition-all duration-300 group
+        className={`w-max lg:w-full shrink-0 text-left p-3 lg:pl-4 rounded-2xl flex items-center gap-3 transition-all duration-300 group border
             ${active 
-                ? 'bg-primary-theme shadow-lg shadow-primary-theme/20 ring-1 ring-primary-theme/50' 
-                : 'hover:bg-theme-card border border-transparent hover:border-theme hover:shadow-md'}`}
+                ? 'bg-primary-theme border-primary-theme shadow-lg shadow-primary-theme/20 text-white' 
+                : 'bg-white lg:bg-transparent border-slate-200 lg:border-transparent hover:bg-theme-card hover:border-theme hover:shadow-md'}`}
     >
-        <div className={`p-2 rounded-xl transition-colors ${active ? 'bg-white/20 text-white' : 'bg-theme-page text-theme-muted group-hover:bg-primary-theme group-hover:text-white'}`}>
+        <div className={`p-2 rounded-xl transition-colors ${active ? 'bg-white/20 text-white' : 'bg-slate-100 lg:bg-theme-page text-theme-muted group-hover:bg-primary-theme group-hover:text-white'}`}>
             {icon}
         </div>
-        <div>
-            <p className={`text-sm font-bold transition-colors ${active ? 'text-white' : 'text-theme-main'}`}>{title}</p>
-            <p className={`text-[11px] font-medium transition-colors ${active ? 'text-blue-100' : 'text-theme-muted'}`}>{subtitle}</p>
+        <div className="pr-2 lg:pr-0">
+            <p className={`text-sm font-bold whitespace-nowrap transition-colors ${active ? 'text-white' : 'text-theme-main'}`}>{title}</p>
+            <p className={`text-[10px] font-medium whitespace-nowrap transition-colors hidden sm:block ${active ? 'text-blue-100' : 'text-theme-muted'}`}>{subtitle}</p>
         </div>
     </button>
 );
